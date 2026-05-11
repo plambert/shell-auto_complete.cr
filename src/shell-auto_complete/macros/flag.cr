@@ -58,6 +58,13 @@ module Shell::AutoComplete
             raise "Union types require an explicit transform_with: on flag #{decl.var}"
           end
         end
+
+        consumed_keys = [:transform_with, :validate_with, :negatable, :complete_with, :hidden, :shortcut_flags]
+        forwarded_pairs = [] of StringLiteral
+        opts.each do |opt_key, opt_val|
+          next if consumed_keys.includes?(opt_key)
+          forwarded_pairs << "#{opt_key}: #{opt_val}"
+        end
       %}
 
       @[::Shell::AutoComplete::FlagDef(
@@ -67,6 +74,7 @@ module Shell::AutoComplete
         description: {{ description }},
         negatable: {% if opts[:negatable] == nil %}true{% else %}{{ opts[:negatable] }}{% end %},
         transform_with: {{ opts[:transform_with] }},
+        forwarded_opts: {% if forwarded_pairs.empty? %}NamedTuple.new{% else %}{ {{ forwarded_pairs.join(", ").id }} }{% end %},
       )]
       property {{ decl }}
     end
