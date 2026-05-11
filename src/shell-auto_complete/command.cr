@@ -31,6 +31,36 @@ module Shell::AutoComplete
         \{% end %}
         raise "no flag named \#{ivar_name}"
       end
+
+      def self.parse(argv : Array(String)) : self
+        specs = [] of ::Shell::AutoComplete::Parser::FlagSpec
+        \{% for ivar in @type.instance_vars %}
+          \{% if fann = ivar.annotation(::Shell::AutoComplete::FlagDef) %}
+            names_\{{ivar.name}} = [\{{fann[:canonical]}}] of String
+            \{% for alias_name in fann[:aliases] %}
+              names_\{{ivar.name}} << \{{alias_name}}
+            \{% end %}
+            \{% if fann[:short] %}
+              names_\{{ivar.name}} << \{{fann[:short]}}
+            \{% end %}
+            specs << ::Shell::AutoComplete::Parser::FlagSpec.new(
+              names: names_\{{ivar.name}},
+              takes_value: true,
+              bool_value: nil,
+            )
+          \{% end %}
+        \{% end %}
+        result = ::Shell::AutoComplete::Parser.parse_argv(argv, specs)
+        inst = new
+        \{% for ivar in @type.instance_vars %}
+          \{% if fann = ivar.annotation(::Shell::AutoComplete::FlagDef) %}
+            if v = result[:values][\{{fann[:canonical]}}]?
+              inst.\{{ivar.name}} = v
+            end
+          \{% end %}
+        \{% end %}
+        inst
+      end
     end
 
     def run
