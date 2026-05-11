@@ -7,8 +7,8 @@ module Shell::AutoComplete
       bool_value : Bool?,
       forced_value : String? = nil
 
-    def self.parse_argv(argv : Array(String), specs : Array(FlagSpec)) : NamedTuple(values: Hash(String, String?), positional: Array(String))
-      values = {} of String => String?
+    def self.parse_argv(argv : Array(String), specs : Array(FlagSpec)) : NamedTuple(values: Hash(String, Array(String?)), positional: Array(String))
+      values = {} of String => Array(String?)
       positional = [] of String
       index = 0
       while index < argv.size
@@ -23,30 +23,32 @@ module Shell::AutoComplete
           unless spec
             raise ParseError.new("unknown flag: #{name}")
           end
+          values[spec.canonical] ||= [] of String?
           if spec.takes_value
             if eq == "="
-              values[spec.canonical] = inline_value
+              values[spec.canonical] << inline_value
             else
               index += 1
               raise ParseError.new("flag #{name} requires a value") if index >= argv.size
-              values[spec.canonical] = argv[index]
+              values[spec.canonical] << argv[index]
             end
           elsif fv = spec.forced_value
-            values[spec.canonical] = fv
+            values[spec.canonical] << fv
           else
-            values[spec.canonical] = spec.bool_value.to_s
+            values[spec.canonical] << spec.bool_value.to_s
           end
         elsif arg.starts_with?("-") && arg.size == 2
           spec = specs.find(&.names.includes?(arg))
           raise ParseError.new("unknown flag: #{arg}") unless spec
+          values[spec.canonical] ||= [] of String?
           if spec.takes_value
             index += 1
             raise ParseError.new("flag #{arg} requires a value") if index >= argv.size
-            values[spec.canonical] = argv[index]
+            values[spec.canonical] << argv[index]
           elsif fv = spec.forced_value
-            values[spec.canonical] = fv
+            values[spec.canonical] << fv
           else
-            values[spec.canonical] = spec.bool_value.to_s
+            values[spec.canonical] << spec.bool_value.to_s
           end
         elsif arg.starts_with?("-") && arg.size > 2
           raise ParseError.new("unknown flag: #{arg}")

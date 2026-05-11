@@ -109,33 +109,103 @@ module Shell::AutoComplete
         \{% for ivar in @type.instance_vars %}
           \{% if fann = ivar.annotation(::Shell::AutoComplete::FlagDef) %}
             \{% if ivar.type.id.stringify == "Bool" %}
-              if v = result[:values][\{{fann[:canonical]}}]?
-                inst.\{{ivar.name}} = (v == "true")
+              if vs = result[:values][\{{fann[:canonical]}}]?
+                if last_v = vs.last?
+                  inst.\{{ivar.name}} = (last_v == "true")
+                end
+              end
+            \{% elsif ivar.type.stringify.starts_with?("Array(") %}
+              if vs = result[:values][\{{fann[:canonical]}}]?
+                \{% elem_type = ivar.type.type_vars[0] %}
+                accum_arr = [] of \{{elem_type}}
+                vs.each do |raw_v|
+                  next unless raw_v
+                  \{% if fann[:delimiter].is_a?(NilLiteral) %}
+                    parts_for_arr = [raw_v]
+                  \{% else %}
+                    parts_for_arr = raw_v.split(\{{fann[:delimiter]}})
+                  \{% end %}
+                  parts_for_arr.each do |part|
+                    accum_arr << \{{elem_type}}.__arg_transform(part, **\{{fann[:forwarded_opts]}})
+                  end
+                end
+                inst.\{{ivar.name}} = accum_arr
+              end
+            \{% elsif ivar.type.stringify.starts_with?("Set(") %}
+              if vs = result[:values][\{{fann[:canonical]}}]?
+                \{% elem_type = ivar.type.type_vars[0] %}
+                accum_set = Set(\{{elem_type}}).new
+                vs.each do |raw_v|
+                  next unless raw_v
+                  \{% if fann[:delimiter].is_a?(NilLiteral) %}
+                    parts_for_set = [raw_v]
+                  \{% else %}
+                    parts_for_set = raw_v.split(\{{fann[:delimiter]}})
+                  \{% end %}
+                  parts_for_set.each do |part|
+                    \{% if fann[:set_operations] %}
+                      if part.starts_with?("-")
+                        accum_set.delete(\{{elem_type}}.__arg_transform(part[1..], **\{{fann[:forwarded_opts]}}).as(\{{elem_type}}))
+                      elsif part.starts_with?("+")
+                        accum_set.add(\{{elem_type}}.__arg_transform(part[1..], **\{{fann[:forwarded_opts]}}).as(\{{elem_type}}))
+                      else
+                        accum_set.add(\{{elem_type}}.__arg_transform(part, **\{{fann[:forwarded_opts]}}).as(\{{elem_type}}))
+                      end
+                    \{% else %}
+                      accum_set.add(\{{elem_type}}.__arg_transform(part, **\{{fann[:forwarded_opts]}}).as(\{{elem_type}}))
+                    \{% end %}
+                  end
+                end
+                inst.\{{ivar.name}} = accum_set
+              end
+            \{% elsif ivar.type.stringify.starts_with?("Hash(") %}
+              if vs = result[:values][\{{fann[:canonical]}}]?
+                \{% val_type = ivar.type.type_vars[1] %}
+                accum_hash = {} of String => \{{val_type}}
+                vs.each do |raw_v|
+                  next unless raw_v
+                  if raw_v.starts_with?("-")
+                    if key_match = raw_v.match(/\A-([A-Za-z0-9_][A-Za-z0-9_\-]*)\z/)
+                      accum_hash.delete(key_match[1])
+                    else
+                      raise ::Shell::AutoComplete::ParseError.new("invalid hash entry: #{raw_v}")
+                    end
+                  elsif kv_match = raw_v.match(/\A([A-Za-z0-9_][A-Za-z0-9_\-]*)=(.*)\z/m)
+                    accum_hash[kv_match[1]] = \{{val_type}}.__arg_transform(kv_match[2], **\{{fann[:forwarded_opts]}})
+                  else
+                    raise ::Shell::AutoComplete::ParseError.new("invalid hash entry: #{raw_v}")
+                  end
+                end
+                inst.\{{ivar.name}} = accum_hash
               end
             \{% else %}
-              if v = result[:values][\{{fann[:canonical]}}]?
-                \{% if tw = fann[:transform_with] %}
-                  transformed_value = self.\{{tw.id}}(v)
-                \{% else %}
-                  \{% inner_type = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
-                  transformed_value = \{{inner_type}}.__arg_transform(v)
-                \{% end %}
-                inst.\{{ivar.name}} = transformed_value
-                \{% inner_type_v = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
-                \{% if vw = fann[:validate_with] %}
-                  result_v = self.\{{vw.id}}(transformed_value)
-                \{% elsif inner_type_v.resolve.class.methods.any? { |m| m.name.stringify == "__arg_validate" } %}
-                  result_v = \{{inner_type_v}}.__arg_validate(transformed_value, **\{{fann[:forwarded_opts]}})
-                \{% else %}
-                  result_v = true
-                \{% end %}
-                case result_v
-                when true
-                  # ok
-                when String
-                  raise ::Shell::AutoComplete::ParseError.new(result_v.as(String))
-                when false
-                  raise ::Shell::AutoComplete::ParseError.new("not a valid \{{ivar.name}}")
+              if vs = result[:values][\{{fann[:canonical]}}]?
+                if raw_last = vs.last?
+                  if v = raw_last
+                    \{% if tw = fann[:transform_with] %}
+                      transformed_value = self.\{{tw.id}}(v)
+                    \{% else %}
+                      \{% inner_type = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
+                      transformed_value = \{{inner_type}}.__arg_transform(v, **\{{fann[:forwarded_opts]}})
+                    \{% end %}
+                    inst.\{{ivar.name}} = transformed_value
+                    \{% inner_type_v = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
+                    \{% if vw = fann[:validate_with] %}
+                      result_v = self.\{{vw.id}}(transformed_value)
+                    \{% elsif inner_type_v.resolve.class.methods.any? { |m| m.name.stringify == "__arg_validate" } %}
+                      result_v = \{{inner_type_v}}.__arg_validate(transformed_value, **\{{fann[:forwarded_opts]}})
+                    \{% else %}
+                      result_v = true
+                    \{% end %}
+                    case result_v
+                    when true
+                      # ok
+                    when String
+                      raise ::Shell::AutoComplete::ParseError.new(result_v.as(String))
+                    when false
+                      raise ::Shell::AutoComplete::ParseError.new("not a valid \{{ivar.name}}")
+                    end
+                  end
                 end
               end
             \{% end %}

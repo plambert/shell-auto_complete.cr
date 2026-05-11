@@ -59,7 +59,7 @@ module Shell::AutoComplete
           end
         end
 
-        consumed_keys = [:transform_with, :validate_with, :negatable, :complete_with, :hidden, :shortcut_flags]
+        consumed_keys = [:transform_with, :validate_with, :negatable, :complete_with, :hidden, :shortcut_flags, :delimiter, :set_operations]
         forwarded_pairs = [] of StringLiteral
         opts.each do |opt_key, opt_val|
           next if consumed_keys.includes?(opt_key)
@@ -77,6 +77,8 @@ module Shell::AutoComplete
         transform_with: {{ opts[:transform_with] }},
         validate_with: {{ opts[:validate_with] }},
         shortcut_flags: {% if opts[:shortcut_flags] %}true{% else %}false{% end %},
+        set_operations: {% if opts[:set_operations] %}true{% else %}false{% end %},
+        delimiter: {% if opts.keys.map(&.stringify).includes?("delimiter") %}{{ opts[:delimiter] }}{% else %}","{% end %},
         forwarded_opts: {% if forwarded_pairs.empty? %}NamedTuple.new{% else %}{ {{ forwarded_pairs.join(", ").id }} }{% end %},
       )]
       property {{ decl }}
