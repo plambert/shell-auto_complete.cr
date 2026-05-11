@@ -32,6 +32,18 @@ module Shell::AutoComplete
           else
             values[spec.names[0]] = spec.bool_value.to_s
           end
+        elsif arg.starts_with?("-") && arg.size == 2
+          spec = specs.find(&.names.includes?(arg))
+          raise ParseError.new("unknown flag: #{arg}") unless spec
+          if spec.takes_value
+            index += 1
+            raise ParseError.new("flag #{arg} requires a value") if index >= argv.size
+            values[spec.names[0]] = argv[index]
+          else
+            values[spec.names[0]] = spec.bool_value.to_s
+          end
+        elsif arg.starts_with?("-") && arg.size > 2
+          raise ParseError.new("unknown flag: #{arg}")
         else
           positional << arg
         end
