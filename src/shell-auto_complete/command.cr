@@ -47,13 +47,15 @@ module Shell::AutoComplete
                 takes_value: false,
                 bool_value: true,
               )
-              negative_name = "--no-" + \{{fann[:canonical]}}.gsub(/^--/, "")
-              specs << ::Shell::AutoComplete::Parser::FlagSpec.new(
-                canonical: \{{fann[:canonical]}},
-                names: [negative_name],
-                takes_value: false,
-                bool_value: false,
-              )
+              \{% if fann[:negatable] %}
+                negative_name = "--no-" + \{{fann[:canonical]}}.gsub(/^--/, "")
+                specs << ::Shell::AutoComplete::Parser::FlagSpec.new(
+                  canonical: \{{fann[:canonical]}},
+                  names: [negative_name],
+                  takes_value: false,
+                  bool_value: false,
+                )
+              \{% end %}
             \{% else %}
               names_\{{ivar.name}} = [\{{fann[:canonical]}}] of String
               \{% for alias_name in fann[:aliases] %}

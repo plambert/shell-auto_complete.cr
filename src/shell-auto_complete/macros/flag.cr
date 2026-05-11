@@ -57,6 +57,7 @@ module Shell::AutoComplete
         aliases: {% if aliases.empty? %}[] of String{% else %}{{ aliases }}{% end %},
         short: {{ short_form }},
         description: {{ description }},
+        negatable: {% if opts[:negatable] == nil %}true{% else %}{{ opts[:negatable] }}{% end %},
       )]
       property {{ decl }}
     end
