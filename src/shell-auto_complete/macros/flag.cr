@@ -1,0 +1,54 @@
+module Shell::AutoComplete
+  abstract class Command
+    macro flag(decl, *flag_strings, **opts)
+      {%
+        # Flatten positional args: expand any ArrayLiteral (e.g. %w(...)) in place.
+        # This lets callers pass either:
+        #   flag foo : String?, "--foo", "-f", "description"
+        #   flag foo : String?, %w(--foo -f), "description"
+        strings = [] of StringLiteral
+        flag_strings.each do |arg|
+          if arg.is_a?(ArrayLiteral)
+            arg.each do |str|
+              strings << str
+            end
+          else
+            strings << arg
+          end
+        end
+
+        long_forms = [] of StringLiteral
+        short_form = nil
+        description = nil
+
+        strings.each do |lit|
+          unless lit.is_a?(StringLiteral)
+            raise "flag-string args must be string literals; got #{lit.class_name}"
+          end
+          raw = lit.id.stringify
+          if raw.starts_with?("--")
+            long_forms << lit
+          elsif raw.starts_with?("-") && raw.size == 2
+            raise "more than one short flag given" if short_form
+            short_form = lit
+          else
+            description = lit if description == nil
+          end
+        end
+
+        raise "no long flag given for #{decl}" if long_forms.empty?
+        canonical = long_forms[0]
+        aliases = long_forms.size > 1 ? long_forms[1..-1] : [] of StringLiteral
+        description = description || ""
+      %}
+
+      @[::Shell::AutoComplete::FlagDef(
+        canonical: {{ canonical }},
+        aliases: {% if aliases.empty? %}[] of String{% else %}{{ aliases }}{% end %},
+        short: {{ short_form }},
+        description: {{ description }},
+      )]
+      property {{ decl }}
+    end
+  end
+end
