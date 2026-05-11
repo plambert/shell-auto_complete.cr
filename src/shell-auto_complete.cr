@@ -4,3 +4,4 @@ end
 
 require "./shell-auto_complete/candidate"
 require "./shell-auto_complete/completion_context"
+require "./shell-auto_complete/annotations"
