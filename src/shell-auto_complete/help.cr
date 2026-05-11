@@ -1,10 +1,12 @@
 module Shell::AutoComplete
   module Help
     alias FlagRow = NamedTuple(canonical: String, aliases: Array(String), short: String?, description: String)
+    alias SubcommandRow = NamedTuple(name: String, description: String)
 
     def self.render(command_name : String,
                     description : String,
                     flags : Array(FlagRow),
+                    subcommands : Array(SubcommandRow) = [] of SubcommandRow,
                     header : String? = nil,
                     footer : String? = nil,
                     usage : String? = nil) : String
@@ -12,7 +14,7 @@ module Shell::AutoComplete
         if header
           str << header << "\n\n"
         end
-        str << "Usage: " << (usage || default_usage(command_name, flags)) << "\n"
+        str << "Usage: " << (usage || default_usage(command_name, flags, subcommands)) << "\n"
         str << "\n"
         str << description << "\n"
         unless flags.empty?
@@ -25,15 +27,23 @@ module Shell::AutoComplete
             str << "  " << forms.join(", ").ljust(30) << "  " << flag_row[:description] << "\n"
           end
         end
+        unless subcommands.empty?
+          str << "\n"
+          str << "Subcommands:\n"
+          subcommands.each do |sub|
+            str << "  " << sub[:name].ljust(20) << "  " << sub[:description] << "\n"
+          end
+        end
         if footer
           str << "\n" << footer << "\n"
         end
       end
     end
 
-    private def self.default_usage(name : String, flags : Array(FlagRow)) : String
+    private def self.default_usage(name : String, flags : Array(FlagRow), subcommands : Array(SubcommandRow) = [] of SubcommandRow) : String
       parts = [name]
       parts << "[options]" unless flags.empty?
+      parts << "<subcommand>" unless subcommands.empty?
       parts.join(" ")
     end
   end

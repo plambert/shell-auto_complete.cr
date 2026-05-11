@@ -61,6 +61,11 @@ module Shell::AutoComplete
         end
       %}
 
+      # Guard: positional cannot coexist with subcommands
+      {% if @type.methods.any? { |meth| meth.name.stringify == "__has_subcommands_sentinel__" } %}
+        \{{ raise "#{@type} declares both positionals and subcommands, which is not allowed" }}
+      {% end %}
+
       @[::Shell::AutoComplete::PositionalDef(
         description: {{ description }},
         transform_with: {{ opts[:transform_with] }},

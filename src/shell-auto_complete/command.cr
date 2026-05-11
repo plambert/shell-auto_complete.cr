@@ -7,12 +7,30 @@ module Shell::AutoComplete
       description : String
 
     macro inherited
+      SUBCOMMANDS = [] of {String, ::Shell::AutoComplete::Command.class}
+
+      macro subcommand(klass)
+        SUBCOMMANDS << { \{{klass}}.command_name, \{{klass}}.as(::Shell::AutoComplete::Command.class) }
+
+        private def __has_subcommands_sentinel__ : Nil
+        end
+      end  # end macro subcommand
+
       def self.command_name : String
         {% ann = @type.annotation(::Shell::AutoComplete::CommandDef) %}
         {% if ann && ann[:name] %}
           {{ ann[:name] }}
         {% else %}
           File.basename(PROGRAM_NAME)
+        {% end %}
+      end
+
+      def self.command_description : String
+        {% ann = @type.annotation(::Shell::AutoComplete::CommandDef) %}
+        {% if ann && ann[:description] %}
+          {{ ann[:description] }}
+        {% else %}
+          ""
         {% end %}
       end
 
@@ -259,21 +277,35 @@ module Shell::AutoComplete
             \{% end %}
           \{% end %}
         \{% end %}
+        subcommands = SUBCOMMANDS.map { |(name, klass)| {name: name, description: klass.command_description} }
         {% cmd_ann = @type.annotation(::Shell::AutoComplete::CommandDef) %}
         ::Shell::AutoComplete::Help.render(
           command_name: command_name,
           description:  {{ cmd_ann && cmd_ann[:description] ? cmd_ann[:description] : "" }}.as(String),
           flags:        flags,
+          subcommands:  subcommands,
           header:       {{ cmd_ann && cmd_ann[:header] ? cmd_ann[:header] : nil }}.as(String?),
           footer:       {{ cmd_ann && cmd_ann[:footer] ? cmd_ann[:footer] : nil }}.as(String?),
           usage:        {{ cmd_ann && cmd_ann[:usage] ? cmd_ann[:usage] : nil }}.as(String?),
         )
       end
 
-      def self.dispatch(argv : Array(String), stdout : IO = STDOUT, stderr : IO = STDERR) : self?
+      def self.dispatch(argv : Array(String), stdout : IO = STDOUT, stderr : IO = STDERR) : ::Shell::AutoComplete::Command?
         if argv.includes?("--help") || argv.includes?("-h")
           stdout.puts help
           return nil
+        end
+        # Subcommand routing
+        unless SUBCOMMANDS.empty?
+          first = argv.first?
+          if first.nil?
+            raise ::Shell::AutoComplete::ParseError.new("expected a subcommand")
+          end
+          match = SUBCOMMANDS.find { |(name, _)| name == first }
+          if match
+            return match[1].dispatch(argv[1..], stdout: stdout, stderr: stderr)
+          end
+          raise ::Shell::AutoComplete::ParseError.new("unknown subcommand: #{first}")
         end
         inst = parse(argv)
         inst.run
