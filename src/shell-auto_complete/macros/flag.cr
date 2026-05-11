@@ -50,6 +50,14 @@ module Shell::AutoComplete
           raw = short_form.id.stringify
           raise "#{raw} is a reserved flag name" if reserved.includes?(raw)
         end
+
+        decl_type = decl.type
+        if decl_type.is_a?(Union)
+          non_nil_types = decl_type.types.reject { |type_node| type_node.resolve == Nil }
+          if non_nil_types.size > 1 && opts[:transform_with] == nil
+            raise "Union types require an explicit transform_with: on flag #{decl.var}"
+          end
+        end
       %}
 
       @[::Shell::AutoComplete::FlagDef(
@@ -58,6 +66,7 @@ module Shell::AutoComplete
         short: {{ short_form }},
         description: {{ description }},
         negatable: {% if opts[:negatable] == nil %}true{% else %}{{ opts[:negatable] }}{% end %},
+        transform_with: {{ opts[:transform_with] }},
       )]
       property {{ decl }}
     end
