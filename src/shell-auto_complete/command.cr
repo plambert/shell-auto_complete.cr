@@ -61,6 +61,12 @@ module Shell::AutoComplete
         \{% end %}
         inst
       end
+
+      def self.dispatch(argv : Array(String)) : self
+        inst = parse(argv)
+        inst.run
+        inst
+      end
     end
 
     def run
