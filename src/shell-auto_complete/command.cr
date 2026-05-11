@@ -373,7 +373,18 @@ module Shell::AutoComplete
         )
       end
 
+      def self.shell_completion_flag_name : String
+        "--shell-completion"
+      end
+
+      def self.completion_script(shell : Symbol) : String
+        "# completion script for #{command_name} (shell: #{shell}) -- placeholder, full renderer in Phase 18\n"
+      end
+
       def self.dispatch(argv : Array(String), stdout : IO = STDOUT, stderr : IO = STDERR) : ::Shell::AutoComplete::Command?
+        if ::Shell::AutoComplete::Completion::InstallFlag.handle(self, argv, stdout, stderr)
+          return nil
+        end
         if argv.includes?("--help") || argv.includes?("-h")
           stdout.puts help
           return nil
