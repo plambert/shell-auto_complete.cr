@@ -32,11 +32,10 @@ describe "ParseCli.parse" do
     end
   end
 
-  it "collects non-flag tokens as positional" do
-    # parse_argv returns positional separately; the high-level .parse drops them
-    # for now (positional handling lands in Phase 10). For this task we just
-    # assert the call doesn't crash on bare positionals.
-    inst = ParseCli.parse(["alpha", "--message", "x"])
-    inst.message.should eq("x")
+  it "rejects non-flag tokens when no positional is declared" do
+    # Phase 10: commands with no positional declarations reject bare tokens.
+    expect_raises(Shell::AutoComplete::ParseError, /too many/) do
+      ParseCli.parse(["alpha", "--message", "x"])
+    end
   end
 end

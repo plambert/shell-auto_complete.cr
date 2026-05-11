@@ -110,6 +110,46 @@ module Shell::AutoComplete
             \{% end %}
           \{% end %}
         \{% end %}
+        positional_tokens = result[:positional]
+        pos_index = 0
+        \{% for ivar in @type.instance_vars %}
+          \{% if pann = ivar.annotation(::Shell::AutoComplete::PositionalDef) %}
+            if pos_index < positional_tokens.size
+              raw_pos_\{{ivar.name}} = positional_tokens[pos_index]
+              \{% if tw = pann[:transform_with] %}
+                transformed_pos_\{{ivar.name}} = self.\{{tw.id}}(raw_pos_\{{ivar.name}})
+              \{% else %}
+                \{% pos_inner_type = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
+                transformed_pos_\{{ivar.name}} = \{{pos_inner_type}}.__arg_transform(raw_pos_\{{ivar.name}})
+              \{% end %}
+              inst.\{{ivar.name}} = transformed_pos_\{{ivar.name}}
+              \{% if vw = pann[:validate_with] %}
+                result_v_pos_\{{ivar.name}} = self.\{{vw.id}}(transformed_pos_\{{ivar.name}})
+              \{% else %}
+                \{% pos_inner_type_v = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
+                \{% if pos_inner_type_v.resolve.class.methods.any? { |m| m.name.stringify == "__arg_validate" } %}
+                  result_v_pos_\{{ivar.name}} = \{{pos_inner_type_v}}.__arg_validate(transformed_pos_\{{ivar.name}}, **\{{pann[:forwarded_opts]}})
+                \{% else %}
+                  result_v_pos_\{{ivar.name}} = true
+                \{% end %}
+              \{% end %}
+              case result_v_pos_\{{ivar.name}}
+              when true
+                # ok
+              when String
+                raise ::Shell::AutoComplete::ParseError.new(result_v_pos_\{{ivar.name}}.as(String))
+              when false
+                raise ::Shell::AutoComplete::ParseError.new("not a valid \{{ivar.name}}")
+              end
+              pos_index += 1
+            \{% if pann[:required] %}
+            else
+              raise ::Shell::AutoComplete::ParseError.new("missing positional argument: \{{ivar.name}}")
+            \{% end %}
+            end
+          \{% end %}
+        \{% end %}
+        raise ::Shell::AutoComplete::ParseError.new("too many positional arguments") if pos_index < positional_tokens.size
         inst
       end
 
