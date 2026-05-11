@@ -40,6 +40,16 @@ module Shell::AutoComplete
         canonical = long_forms[0]
         aliases = long_forms.size > 1 ? long_forms[1..-1] : [] of StringLiteral
         description = description || ""
+
+        reserved = ["--help", "-h"]
+        long_forms.each do |long_form|
+          raw = long_form.id.stringify
+          raise "#{raw} is a reserved flag name" if reserved.includes?(raw)
+        end
+        if short_form
+          raw = short_form.id.stringify
+          raise "#{raw} is a reserved flag name" if reserved.includes?(raw)
+        end
       %}
 
       @[::Shell::AutoComplete::FlagDef(
