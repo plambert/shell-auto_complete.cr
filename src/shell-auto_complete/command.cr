@@ -83,7 +83,8 @@ module Shell::AutoComplete
               end
             \{% else %}
               if v = result[:values][\{{fann[:canonical]}}]?
-                inst.\{{ivar.name}} = v
+                \{% inner_type = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
+                inst.\{{ivar.name}} = \{{inner_type}}.__arg_transform(v)
               end
             \{% end %}
           \{% end %}
