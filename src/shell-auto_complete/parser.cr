@@ -1,6 +1,7 @@
 module Shell::AutoComplete
   module Parser
     record FlagSpec,
+      canonical : String,
       names : Array(String),
       takes_value : Bool,
       bool_value : Bool?
@@ -23,14 +24,14 @@ module Shell::AutoComplete
           end
           if spec.takes_value
             if eq == "="
-              values[spec.names[0]] = inline_value
+              values[spec.canonical] = inline_value
             else
               index += 1
               raise ParseError.new("flag #{name} requires a value") if index >= argv.size
-              values[spec.names[0]] = argv[index]
+              values[spec.canonical] = argv[index]
             end
           else
-            values[spec.names[0]] = spec.bool_value.to_s
+            values[spec.canonical] = spec.bool_value.to_s
           end
         elsif arg.starts_with?("-") && arg.size == 2
           spec = specs.find(&.names.includes?(arg))
@@ -38,9 +39,9 @@ module Shell::AutoComplete
           if spec.takes_value
             index += 1
             raise ParseError.new("flag #{arg} requires a value") if index >= argv.size
-            values[spec.names[0]] = argv[index]
+            values[spec.canonical] = argv[index]
           else
-            values[spec.names[0]] = spec.bool_value.to_s
+            values[spec.canonical] = spec.bool_value.to_s
           end
         elsif arg.starts_with?("-") && arg.size > 2
           raise ParseError.new("unknown flag: #{arg}")

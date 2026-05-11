@@ -36,27 +36,54 @@ module Shell::AutoComplete
         specs = [] of ::Shell::AutoComplete::Parser::FlagSpec
         \{% for ivar in @type.instance_vars %}
           \{% if fann = ivar.annotation(::Shell::AutoComplete::FlagDef) %}
-            names_\{{ivar.name}} = [\{{fann[:canonical]}}] of String
-            \{% for alias_name in fann[:aliases] %}
-              names_\{{ivar.name}} << \{{alias_name}}
+            \{% if ivar.type.id.stringify == "Bool" %}
+              pos_names_\{{ivar.name}} = [\{{fann[:canonical]}}] of String
+              \{% if fann[:short] %}
+                pos_names_\{{ivar.name}} << \{{fann[:short]}}
+              \{% end %}
+              specs << ::Shell::AutoComplete::Parser::FlagSpec.new(
+                canonical: \{{fann[:canonical]}},
+                names: pos_names_\{{ivar.name}},
+                takes_value: false,
+                bool_value: true,
+              )
+              negative_name = "--no-" + \{{fann[:canonical]}}.gsub(/^--/, "")
+              specs << ::Shell::AutoComplete::Parser::FlagSpec.new(
+                canonical: \{{fann[:canonical]}},
+                names: [negative_name],
+                takes_value: false,
+                bool_value: false,
+              )
+            \{% else %}
+              names_\{{ivar.name}} = [\{{fann[:canonical]}}] of String
+              \{% for alias_name in fann[:aliases] %}
+                names_\{{ivar.name}} << \{{alias_name}}
+              \{% end %}
+              \{% if fann[:short] %}
+                names_\{{ivar.name}} << \{{fann[:short]}}
+              \{% end %}
+              specs << ::Shell::AutoComplete::Parser::FlagSpec.new(
+                canonical: \{{fann[:canonical]}},
+                names: names_\{{ivar.name}},
+                takes_value: true,
+                bool_value: nil,
+              )
             \{% end %}
-            \{% if fann[:short] %}
-              names_\{{ivar.name}} << \{{fann[:short]}}
-            \{% end %}
-            specs << ::Shell::AutoComplete::Parser::FlagSpec.new(
-              names: names_\{{ivar.name}},
-              takes_value: true,
-              bool_value: nil,
-            )
           \{% end %}
         \{% end %}
         result = ::Shell::AutoComplete::Parser.parse_argv(argv, specs)
         inst = new
         \{% for ivar in @type.instance_vars %}
           \{% if fann = ivar.annotation(::Shell::AutoComplete::FlagDef) %}
-            if v = result[:values][\{{fann[:canonical]}}]?
-              inst.\{{ivar.name}} = v
-            end
+            \{% if ivar.type.id.stringify == "Bool" %}
+              if v = result[:values][\{{fann[:canonical]}}]?
+                inst.\{{ivar.name}} = (v == "true")
+              end
+            \{% else %}
+              if v = result[:values][\{{fann[:canonical]}}]?
+                inst.\{{ivar.name}} = v
+              end
+            \{% end %}
           \{% end %}
         \{% end %}
         inst
