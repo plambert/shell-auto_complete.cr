@@ -563,9 +563,8 @@ src/
     help.cr
 spec/
   ...mirrors src/ layout...
-docs/
-  superpowers/specs/
-    2026-05-10-shell-autocomplete-api-design.md   # this file
+specs/
+  2026-05-10-shell-autocomplete-api-design.md     # this file
 ```
 
 ## Open questions (deferred to implementation)
