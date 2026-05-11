@@ -91,17 +91,21 @@ module Shell::AutoComplete
                 \{% end %}
                 inst.\{{ivar.name}} = transformed_value
                 \{% inner_type_v = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
-                \{% if inner_type_v.resolve.class.methods.any? { |m| m.name.stringify == "__arg_validate" } %}
+                \{% if vw = fann[:validate_with] %}
+                  result_v = self.\{{vw.id}}(transformed_value)
+                \{% elsif inner_type_v.resolve.class.methods.any? { |m| m.name.stringify == "__arg_validate" } %}
                   result_v = \{{inner_type_v}}.__arg_validate(transformed_value, **\{{fann[:forwarded_opts]}})
-                  case result_v
-                  when true
-                    # ok
-                  when String
-                    raise ::Shell::AutoComplete::ParseError.new(result_v.as(String))
-                  when false
-                    raise ::Shell::AutoComplete::ParseError.new("not a valid \{{ivar.name}}")
-                  end
+                \{% else %}
+                  result_v = true
                 \{% end %}
+                case result_v
+                when true
+                  # ok
+                when String
+                  raise ::Shell::AutoComplete::ParseError.new(result_v.as(String))
+                when false
+                  raise ::Shell::AutoComplete::ParseError.new("not a valid \{{ivar.name}}")
+                end
               end
             \{% end %}
           \{% end %}
