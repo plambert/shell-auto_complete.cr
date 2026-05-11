@@ -79,8 +79,8 @@ end
 # End-to-end: wire PositiveInt via transform_with + validate_with
 Shell::AutoComplete.command SynthCli, name: "synth", description: "x" do
   flag count : Int32?, "--count", "c",
-       transform_with: :transform_count,
-       validate_with: :validate_count
+    transform_with: :transform_count,
+    validate_with: :validate_count
 
   def self.transform_count(value : String) : Int32
     Shell::AutoComplete::Types::PositiveInt.__arg_transform(value)

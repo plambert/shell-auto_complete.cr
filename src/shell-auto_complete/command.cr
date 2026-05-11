@@ -381,8 +381,12 @@ module Shell::AutoComplete
         case shell
         when :bash
           ::Shell::AutoComplete::Completion::Bash.render(self)
+        when :zsh
+          ::Shell::AutoComplete::Completion::Zsh.render(self)
+        when :fish
+          ::Shell::AutoComplete::Completion::Fish.render(self)
         else
-          "# #{shell} renderer pending (Phase 19)\n"
+          raise ArgumentError.new("unsupported shell: #{shell}")
         end
       end
 
