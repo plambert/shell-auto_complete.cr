@@ -378,10 +378,97 @@ module Shell::AutoComplete
       end
 
       def self.completion_script(shell : Symbol) : String
-        "# completion script for #{command_name} (shell: #{shell}) -- placeholder, full renderer in Phase 18\n"
+        case shell
+        when :bash
+          ::Shell::AutoComplete::Completion::Bash.render(self)
+        else
+          "# #{shell} renderer pending (Phase 19)\n"
+        end
+      end
+
+      def self.completion_candidates(words : Array(String), cword : Int32, current : String, prev : String) : Array(String)
+        result = [] of String
+
+        # Subcommand position: cword == 1 and subcommands exist.
+        \{% if @type.has_constant?("SUBCOMMANDS") %}
+          if cword == 1
+            SUBCOMMANDS.each do |(sub_name, _)|
+              result << sub_name if sub_name.starts_with?(current)
+            end
+            return result unless result.empty?
+          end
+        \{% end %}
+
+        # Check if prev word is a flag that takes a value — emit value candidates.
+        # @[Flags] enum trailing-comma completion.
+        \{% for ivar in @type.instance_vars %}
+          \{% if fann = ivar.annotation(::Shell::AutoComplete::FlagDef) %}
+            \{% inner_type = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
+            \{% if inner_type.resolve.annotation(::Flags) %}
+              all_names_\{{ivar.name}} = [\{{fann[:canonical]}}] of String
+              \{% for alias_name in fann[:aliases] %}
+                all_names_\{{ivar.name}} << \{{alias_name}}
+              \{% end %}
+              \{% if fann[:short] %}
+                all_names_\{{ivar.name}} << \{{fann[:short]}}
+              \{% end %}
+              if all_names_\{{ivar.name}}.includes?(prev)
+                if current.includes?(",") || current.ends_with?(",")
+                  existing_parts = current.chomp(",").split(",").reject(&.empty?)
+                  base_prefix = current.chomp(",")
+                  \{% for case_const in inner_type.resolve.constants %}
+                    \{% case_name = case_const.stringify.underscore.tr("_", "-") %}
+                    unless existing_parts.includes?(\{{case_name}})
+                      result << base_prefix + "," + \{{case_name}}
+                    end
+                  \{% end %}
+                end
+                return result
+              end
+            \{% end %}
+          \{% end %}
+        \{% end %}
+
+        # Flag-name completion when current starts with "-" or is empty.
+        if current.starts_with?("-") || current.empty?
+          \{% for ivar in @type.instance_vars %}
+            \{% if fann = ivar.annotation(::Shell::AutoComplete::FlagDef) %}
+              \{% inner_type_flag = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
+              canonical_\{{ivar.name}} = \{{fann[:canonical]}}
+              canonical_matches_\{{ivar.name}} = canonical_\{{ivar.name}}.starts_with?(current)
+              if canonical_matches_\{{ivar.name}}
+                result << canonical_\{{ivar.name}}
+              end
+              \{% if fann[:short] %}
+                if \{{fann[:short]}}.starts_with?(current)
+                  result << \{{fann[:short]}}
+                end
+              \{% end %}
+              \{% if inner_type_flag.id.stringify == "Bool" && fann[:negatable] %}
+                neg_name_\{{ivar.name}} = "--no-" + \{{fann[:canonical]}}.gsub(/^--/, "")
+                if neg_name_\{{ivar.name}}.starts_with?(current)
+                  result << neg_name_\{{ivar.name}}
+                end
+              \{% end %}
+              # Aliases — only emit when canonical does NOT match the prefix.
+              unless canonical_matches_\{{ivar.name}}
+                \{% for alias_name in fann[:aliases] %}
+                  if \{{alias_name}}.starts_with?(current)
+                    result << \{{alias_name}}
+                  end
+                \{% end %}
+              end
+            \{% end %}
+          \{% end %}
+        end
+
+        result
       end
 
       def self.dispatch(argv : Array(String), stdout : IO = STDOUT, stderr : IO = STDERR) : ::Shell::AutoComplete::Command?
+        if ::Shell::AutoComplete::Completion::Dispatcher.handle(self, argv, stdout)
+          return nil
+        end
         if ::Shell::AutoComplete::Completion::InstallFlag.handle(self, argv, stdout, stderr)
           return nil
         end
