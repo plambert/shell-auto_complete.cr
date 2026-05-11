@@ -5,3 +5,5 @@ end
 require "./shell-auto_complete/candidate"
 require "./shell-auto_complete/completion_context"
 require "./shell-auto_complete/annotations"
+require "./shell-auto_complete/errors"
+require "./shell-auto_complete/command"
