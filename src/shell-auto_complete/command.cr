@@ -88,6 +88,19 @@ module Shell::AutoComplete
                 takes_value: true,
                 bool_value: nil,
               )
+              \{% if fann[:shortcut_flags] %}
+                \{% inner_type_sc = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
+                \{% for case_const in inner_type_sc.resolve.constants %}
+                  \{% kebab_name = case_const.stringify.underscore.tr("_", "-") %}
+                  specs << ::Shell::AutoComplete::Parser::FlagSpec.new(
+                    canonical: \{{fann[:canonical]}},
+                    names: ["--" + \{{kebab_name}}],
+                    takes_value: false,
+                    bool_value: nil,
+                    forced_value: \{{kebab_name}},
+                  )
+                \{% end %}
+              \{% end %}
             \{% end %}
           \{% end %}
         \{% end %}

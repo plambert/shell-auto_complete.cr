@@ -76,6 +76,7 @@ module Shell::AutoComplete
         hidden: {% if opts[:hidden] == nil %}false{% else %}{{ opts[:hidden] }}{% end %},
         transform_with: {{ opts[:transform_with] }},
         validate_with: {{ opts[:validate_with] }},
+        shortcut_flags: {% if opts[:shortcut_flags] %}true{% else %}false{% end %},
         forwarded_opts: {% if forwarded_pairs.empty? %}NamedTuple.new{% else %}{ {{ forwarded_pairs.join(", ").id }} }{% end %},
       )]
       property {{ decl }}

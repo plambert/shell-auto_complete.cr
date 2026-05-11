@@ -4,7 +4,8 @@ module Shell::AutoComplete
       canonical : String,
       names : Array(String),
       takes_value : Bool,
-      bool_value : Bool?
+      bool_value : Bool?,
+      forced_value : String? = nil
 
     def self.parse_argv(argv : Array(String), specs : Array(FlagSpec)) : NamedTuple(values: Hash(String, String?), positional: Array(String))
       values = {} of String => String?
@@ -30,6 +31,8 @@ module Shell::AutoComplete
               raise ParseError.new("flag #{name} requires a value") if index >= argv.size
               values[spec.canonical] = argv[index]
             end
+          elsif fv = spec.forced_value
+            values[spec.canonical] = fv
           else
             values[spec.canonical] = spec.bool_value.to_s
           end
@@ -40,6 +43,8 @@ module Shell::AutoComplete
             index += 1
             raise ParseError.new("flag #{arg} requires a value") if index >= argv.size
             values[spec.canonical] = argv[index]
+          elsif fv = spec.forced_value
+            values[spec.canonical] = fv
           else
             values[spec.canonical] = spec.bool_value.to_s
           end
