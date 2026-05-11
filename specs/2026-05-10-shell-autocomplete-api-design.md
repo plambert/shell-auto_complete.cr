@@ -1,6 +1,6 @@
 # Shell::AutoComplete — API Design
 
-**Status:** Draft v1
+**Status:** Draft v2
 **Date:** 2026-05-10
 **Author:** Paul M. Lambert
 
@@ -33,24 +33,47 @@ completion and call back into the user's binary for dynamic positions.
 ## Top-level architecture
 
 The user defines each (sub)command as a class via a `command` macro.
-Inside the block, `flag` and `positional` macros declare parameters;
-each expands to an annotated `property` whose declared type is the
-return type of its transformer. A `subcommand` macro registers child
-commands on a parent.
+Inside the block, `flag`, `positional`, and `positionals` macros
+declare parameters; each expands to an annotated `property` whose
+declared type is the return type of its transformer. A `subcommand`
+macro registers child commands on a parent. Subcommands may
+themselves have subcommands.
 
 At compile time, `command` walks the class's instance variables and
 their annotations to generate four artifacts:
 
 1. A parser: `MyCommand.parse(argv : Array(String)) : MyCommand`
 2. Help output: `MyCommand.help : String` (printed for `--help` / `-h`)
-3. A completion dispatcher invoked when the binary receives a hidden
-   `__complete` request from its own generated shell script.
+3. A completion dispatcher invoked when the binary is asked to emit
+   completion candidates at runtime.
 4. Shell script renderers:
    `MyCommand.completion_script(:bash | :zsh | :fish) : String`.
 
-`MyCommand.dispatch(ARGV)` is the entry point: it detects `__complete`
-and `__completion <shell>` modes, otherwise parses ARGV and calls
-`#run` on the populated instance.
+`MyCommand.dispatch(ARGV)` is the entry point. Before normal parsing
+it checks for, in order:
+
+1. The shell-completion install flag (default `--shell-completion`,
+   customizable via `shell_completion_flag` macro). Emits the script
+   to STDOUT (or an install example to STDERR, if STDOUT is a tty).
+2. The hidden runtime-completion form (used by the generated shell
+   script). Emits candidates to STDOUT.
+3. `--help` / `-h`. Emits help text and exits.
+
+If none match, ARGV is parsed normally and `#run` is called on the
+populated instance.
+
+## Completion data types
+
+```crystal
+struct Shell::AutoComplete::Candidate
+  getter value : String
+  getter description : String?
+end
+```
+
+Completers may return `Array(String)` (no descriptions) or
+`Array(Candidate)`. The bash renderer ignores descriptions; zsh and
+fish use them to annotate candidates in the menu.
 
 ## Macro DSL
 
@@ -72,15 +95,25 @@ end
 `Shell::AutoComplete::Command`, applies an internal
 `@[Shell::AutoComplete::CommandDef(name:, description:)]` annotation,
 and evaluates the block as the class body. The first argument must be
-a constant path AST node; `name` and `description` are required.
+a constant path AST node.
 
 Keyword arguments accepted on `command`:
 
-- `name : String` (required) — the command word as it appears in the shell.
+- `name : String?` — the command word as it appears in the shell.
+  On the top-level command (the one passed to `dispatch`), `name`
+  defaults to `File.basename(PROGRAM_NAME)`. On subcommands, `name`
+  is required.
 - `description : String` (required) — one-line summary for help.
 - `header : String?` — text inserted above the options list in `--help`.
 - `footer : String?` — text inserted below the options list in `--help`.
 - `usage : String?` — custom usage line; default is generated.
+
+Two additional macros may appear at the top of any `command` block to
+adjust framework-level behavior:
+
+- `shell_completion_flag "--foo"` — overrides the default
+  `--shell-completion` install flag.
+- (Future hook points may be added here as needed.)
 
 ### `flag`
 
@@ -101,7 +134,7 @@ flag message : String?, %w(--message --msg -m), "Build message"
 flag color : Bool = true, "--color", "-c", "Colorize output"
 
 flag log_level : LogLevel = LogLevel::Info,
-     "--log-level", "Log verbosity", expand_enum: true
+     "--log-level", "Log verbosity", shortcut_flags: true
 
 flag perms : Perms = Perms::None,
      "--perms", "Granted permissions"   # @[Flags] enum, comma-separated
@@ -117,64 +150,84 @@ flag retries : Int32 = 3, "--retries", "-r", validate_with: :check_retries
 Flag-string parsing (all entries must be string literals):
 
 - The first `--`-prefixed string is the **canonical long flag**.
-- Additional `--`-prefixed strings are **aliases** (parsed but
-  optionally hidden from completion via `hide_aliases: true`).
+- Additional `--`-prefixed strings are **aliases**. They are accepted
+  by the parser. In completion output, an alias is shown only when
+  the current word prefix-matches the alias but not the canonical
+  (see Runtime completion dispatch).
 - At most one `-`-prefixed single-letter string is the **short flag**.
 - The first non-`-`-prefixed string is the **description**.
 
-Reserved names: `--help` and `-h` may not be declared by user code;
+Reserved names: `--help`, `-h`, and the configured shell-completion
+flag (default `--shell-completion`) may not be declared by user code;
 attempting to do so is a compile error.
 
-Recognized `flag` opts (consumed by the macro, not passed to the
-validator):
+Recognized `flag` opts (consumed by the macro, never forwarded):
 
-- `expand_enum: true` (only valid for enum-typed properties; invalid
-  for `@[Flags]` enums).
-- `validate_with: :method_name` (overrides the validator lookup chain).
-- `transform_with: :method_name` (overrides the transformer lookup
-  chain).
-- `hide_aliases: true` (omit non-canonical long flags from completion).
+- `shortcut_flags: true` — only valid on ordinary-enum properties.
+  Generates one `--<case>` shortcut flag per enum case in addition
+  to the canonical `--<flag> <case>` form (e.g., `LogLevel::Debug`
+  produces `--debug`). Invalid for `@[Flags]` enums; compile error.
+- `validate_with: :method_name` — overrides the validator lookup chain.
+- `transform_with: :method_name` — overrides the transformer lookup chain.
+  **Required** when the property type is a union (e.g., `String | Int32`);
+  compile error otherwise.
+- `complete_with: :method_name` — overrides the completer lookup chain
+  with a method on the class receiving a `CompletionContext` and
+  returning `Array(String)` or `Array(Candidate)`.
 - `negatable: false` (Bool only; suppresses auto-generated `--no-foo`).
-- `choices: %w[a b c]` — fixed list of acceptable values (also drives
-  completion candidates and shell-side validation).
-- `complete_with: :method_name` — dynamic completer for this flag's
-  value; method receives a `CompletionContext` and returns
-  `Array(String)` or `Array(Candidate)`.
+- `hidden: true` — omit from both `--help` and completion output.
 
-All other keyword args (including `range:`, `matches:`, etc.) are
-forwarded to the validator as `**kwargs`.
+All other keyword args (e.g., `range:`, `matches:`, `choices:`,
+`delimiter:`, `set_operations:`) are filtered at macro-expansion
+time so consumed opts are removed, then forwarded to the transformer,
+validator, and completer as `**opts`.
 
-Path/File/Dir-typed flags and positionals automatically emit
-shell-native file completion in the generated script (no
-`complete_with:` needed). Explicit `complete_with:` overrides this.
+Path/File/Dir/EnvVar-typed flags and positionals automatically emit
+shell-native completion in the generated script (no `complete_with:`
+needed). Explicit `complete_with:` overrides this.
 
-### `positional`
+### `positional` (scalar) and `positionals` (variadic)
 
 ```
-positional <name> : <Type> [= <default>],
-           <description>,
-           **opts
+positional  <name> : <Type> [= <default>], <description>, **opts
+positionals <name> : <Collection-Type>,     <description>, **opts
 ```
 
 Examples:
 
 ```crystal
-positional name : String, "the build name"
-
-positional files : Array(Path), "files to tag", min: 1
-
-positional destination : Path, "destination"
+positional  name        : String,       "the build name"
+positionals files       : Array(Path),  "files to tag", min: 1
+positional  destination : Path,         "destination"
 ```
 
-The same transformer/validator chain applies. There are no flag-strings.
-The declaration order in source = the binding order.
+`positional` declares a scalar positional argument. `positionals`
+declares the (at most one) variadic, whose type must be `Array(T)`,
+`Set(T)`, or `Hash(String, T)`. Splitting the two macros makes the
+intent explicit and lets each enforce its own constraints at compile
+time:
 
-Recognized opts beyond those forwarded to the validator:
+- Declaring `positionals` more than once in a single `command` is a
+  compile error.
+- Declaring `positional` with a collection type, or `positionals`
+  with a non-collection type, is a compile error.
+- A `command` block that has any `subcommand` declarations may not
+  declare any positionals.
 
-- `min: <Int>`, `max: <Int>` — bounds on a variadic positional
-  (`Array(T)`, `Set(T)`, or `Hash(String, T)`). Defaults: `min: 0`,
-  `max: Int32::MAX`.
+The same transformer/validator/completer chains apply. Declaration
+order in source determines binding order.
+
+Recognized macro-consumed opts:
+
+- `min: <Int>`, `max: <Int>` — bounds on the count of values bound to
+  a `positionals` declaration. Defaults: `min: 0`, `max: Int32::MAX`.
+  Not valid on `positional`.
 - `complete_with: :method_name` — dynamic completer for this position.
+- `hidden: true` — omit from `--help` (positionals are not directly
+  completed by name, so this only affects help).
+
+All other keyword args are forwarded to the type's transformer,
+validator, and completer.
 
 ### `subcommand`
 
@@ -195,17 +248,27 @@ global flags.)
 
 - `Shell::AutoComplete::CommandDef`
 - `Shell::AutoComplete::FlagDef`
-- `Shell::AutoComplete::PositionalDef`
+- `Shell::AutoComplete::PositionalDef`   — for scalar positionals
+- `Shell::AutoComplete::PositionalsDef`  — for the variadic positional
 
 These are applied by the macro DSL; end users do not write them
 directly. Named to avoid confusion with stdlib's `@[Flags]`.
 
-## Type system: transformers and validators
+## Type system: transformers, validators, and completers
 
 Every flag and positional has a declared "input type" `T` (from the
 macro) and a resolved property type `R` (the return type of `T`'s
 transformer). `R` may equal `T`, or `T` may be a synthetic module that
 maps to a different `R` (e.g., `PositiveInt` → `Int32`).
+
+Three parallel hook chains run against the type system: transformer
+(string → value), validator (value → ok/error), and completer (prefix
+→ candidates). All three receive the same filtered `**opts` namedtuple
+(the macro-consumed keys are stripped at compile time).
+
+Union types (e.g., `String | Int32`) are allowed **only** when
+`transform_with:` is provided on the macro. The macro otherwise emits
+a compile error pointing at the declaration.
 
 ### Transformer lookup
 
@@ -235,8 +298,8 @@ value is set directly from the flag form (`--foo` → `true`,
 For a parameter named `foo` declared with type `T`, the validator is
 looked up in this order; the first match wins:
 
-1. Method `__arg_validate_foo(value, **kwargs)` on the command class.
-2. Method `T.__arg_validate(value, **kwargs)` on the declared type.
+1. Method `__arg_validate_foo(value, **opts)` on the command class.
+2. Method `T.__arg_validate(value, **opts)` on the declared type.
 
 If `validate_with: :symbol` was given on the macro, that method is
 used directly, bypassing the lookup chain.
@@ -246,20 +309,70 @@ If none is found, validation is skipped.
 Validator signature:
 
 ```crystal
-def __arg_validate_foo(value : R, **kwargs) : Bool | String
+def __arg_validate_foo(value : R, **opts) : Bool | String
 end
 ```
 
 - `value` is the transformer's output.
-- `**kwargs` is the flag-macro's keyword args minus those consumed by
-  the macro itself (`expand_enum`, `validate_with`, `transform_with`,
-  `hide_aliases`, `negatable`, `min`, `max`, `complete_with`).
+- `**opts` is the flag-macro's keyword args minus those consumed by
+  the macro itself (`shortcut_flags`, `validate_with`, `transform_with`,
+  `complete_with`, `negatable`, `hidden`, and on positionals
+  additionally `min`, `max`). The filter is applied at compile time;
+  validators do not see consumed keys.
 - Return `true` → accept.
 - Return a `String` → raise `ArgumentError.new(string)`.
 - Return `false` → raise `ArgumentError.new("not a valid <name>")`.
 - Raising `ArgumentError` directly is also supported.
 
 `Bool`-typed parameters skip the validator chain.
+
+### Completer lookup (optional)
+
+For a parameter named `foo` declared with type `T`, the completer is
+looked up in this order; the first match wins:
+
+1. Method `__arg_complete_foo(prefix : String, **opts)` on the command
+   class. This method may use `@field`-style access to other
+   already-parsed values for context.
+2. Method `T.__arg_complete(prefix : String, **opts)` on the declared
+   type.
+
+If `complete_with: :symbol` was given on the macro, that method is
+used directly, bypassing the lookup chain. If none is found,
+completion returns an empty list (the position contributes no
+candidates beyond what the parent context provides — e.g., file
+completion for `Path`).
+
+Completer signature:
+
+```crystal
+def __arg_complete_foo(prefix : String, **opts) : Array(String) | Array(Candidate)
+end
+```
+
+The shell renderers may emit "file-completion" or "envvar-completion"
+sentinels rather than a concrete list, so the result type also admits
+those sentinel values via a small ADT used internally by the renderer.
+At the user-facing level only `Array(String)` and `Array(Candidate)`
+need to be considered.
+
+Default `__arg_complete` implementations shipped with the shard:
+
+- `String` — reads `choices:` from `**opts`; emits a kebab-case-aware
+  prefix-filtered subset if present, otherwise no candidates.
+- Numeric scalars (`Int*`, `Float*`) — no candidates by default. Range
+  validation does not enumerate candidates.
+- `Bool` — handled by the macro layer; not invoked at runtime.
+- Ordinary enums — case names, kebab-cased.
+- `@[Flags]` enums — case names. The completer is also aware of the
+  active prefix and offers the cases not already present in the
+  comma-separated value (e.g., `--perms read,` offers `write,execute`).
+- `Path`, `File`, `Dir` — emit shell-native file-completion sentinel.
+- `Shell::AutoComplete::Types::EnvVar` — emit shell-native
+  environment-variable-completion sentinel.
+- Collections — delegate to the element type's `__arg_complete` with
+  awareness of the active partial value (split on the active
+  `delimiter`).
 
 ### Bundled transformers
 
@@ -273,6 +386,8 @@ Shipped with the shard:
   (ISO 8601 + RFC 3339 + common formats), `Socket::IPAddress`,
   `Log::Severity`, `Regex`.
 - Collections: `Array(T)`, `Set(T)`, `Hash(String, T)` — see below.
+  `String`'s element transformer is a no-op (no special casing of
+  `Array(String)` is needed).
 - Enums (any user-defined enum): match enum case names, kebab-cased.
   For `@[Flags]` enums, accept comma-separated lists via `Enum.parse`.
 
@@ -290,6 +405,9 @@ Shipped synthetic types:
 - `Shell::AutoComplete::Types::Percentage` → `Float64`, requires `0.0..100.0`.
 - `Shell::AutoComplete::Types::EpochTime` → `Time`, parses float seconds.
 - `Shell::AutoComplete::Types::Date` → `Time`, accepts `YYYY-MM-DD`.
+- `Shell::AutoComplete::Types::EnvVar` → `String`, accepts only valid
+  environment-variable names (`^[A-Za-z_][A-Za-z0-9_]*$`); emits
+  shell-native environment-variable completion.
 
 User-defined synthetic types follow the same pattern.
 
@@ -299,23 +417,37 @@ validates without requiring a custom method.
 
 ### Collections
 
+All collection transformers honor a `delimiter:` kwarg.
+
+- `delimiter: ","` (default) — each occurrence's value is split on the
+  delimiter; every resulting element is run through `T`'s transformer
+  chain.
+- `delimiter: ";"` (or any other `String`) — split on that string.
+- `delimiter: nil` — no splitting; the entire occurrence is treated
+  as a single element (passed through `T`'s transformer verbatim).
+
+Multiple occurrences on the command line always accumulate, regardless
+of `delimiter:`.
+
 #### `Array(T)`
 
-- Multiple occurrences on the command line append:
-  `--tag a --tag b` → `["a", "b"]`.
-- A single occurrence splits on `,`:
-  `--tag a,b` → `["a", "b"]`.
-- Per-element transformation via `T`'s transformer chain (except
-  `Array(String)`, which skips per-element transform).
+- `--tag a --tag b` → `["a", "b"]`
+- `--tag a,b` → `["a", "b"]` (default delimiter)
+- `--tag a,b --tag c` → `["a", "b", "c"]`
+- With `delimiter: nil`: `--tag a,b` → `["a,b"]`.
 
 #### `Set(T)`
 
-Same as `Array(T)` but with per-element sigils:
+By default, `Set(T)` behaves like `Array(T)` with deduplication —
+no prefix interpretation.
+
+With `set_operations: true`, per-element sigils are recognized:
 
 - No prefix or `+` prefix → add to set.
-- `-` prefix → remove from set.
+- `-` prefix → remove that element from the set.
 
-`--levels +debug --levels -info,+warn` accumulates as expected.
+`flag levels : Set(LogLevel), "--levels", set_operations: true`
+makes `--levels +debug --levels -info,+warn` work as expected.
 
 #### `Hash(String, T)`
 
@@ -340,13 +472,13 @@ a parse error.
 ### Enums
 
 - Ordinary enums: parser accepts case-insensitive case names with
-  underscores or hyphens. Completion candidates are the kebab-cased
-  case names.
+  underscores or hyphens. Completion candidates (via
+  `Enum.__arg_complete`) are the kebab-cased case names.
 - `@[Flags]` enums: parser accepts comma-separated lists of case names
-  via `Enum.parse`. Completion candidates are individual case names
-  (the shell user composes the comma-separated value themselves; full
-  combinatorial completion is out of scope).
-- `expand_enum: true` is valid only on ordinary enums; on `@[Flags]`
+  via `Enum.parse`. The completer is aware of the active partial value
+  and, when the cursor is after a trailing `,`, offers only the cases
+  not already present in the comma-separated value.
+- `shortcut_flags: true` is valid only on ordinary enums; on `@[Flags]`
   enums it is a compile error.
 
 ## Boolean flags
@@ -357,12 +489,12 @@ A flag whose property type is `Bool`:
 - Short flags get no auto-complement (`-c` does not imply `-C`).
 - Setting `negatable: false` on the macro suppresses `--no-foo`.
 
-## Enum-derived exclusive groups
+## Enum-derived exclusive groups (`shortcut_flags`)
 
-With `expand_enum: true` on an ordinary-enum flag:
+With `shortcut_flags: true` on an ordinary-enum flag:
 
-- The canonical `--flag <case>` form is generated, with completion
-  candidates drawn from the enum cases.
+- The canonical `--flag <case>` form is generated. Completion
+  candidates for the value come from the enum's `__arg_complete`.
 - One shortcut flag per enum case is generated, kebab-cased
   (`LogLevel::Debug` → `--debug`). All shortcuts target the same
   property; **last one wins** if multiple are passed (no error,
@@ -372,28 +504,45 @@ With `expand_enum: true` on an ordinary-enum flag:
 
 After flag parsing finishes (including `--` handling), let:
 
-- `positionals` = declared positionals in source order, partitioned
-  into `leading` (scalars before the variadic), `variadic` (at most one),
-  and `trailing` (scalars after the variadic).
+- `leading` = `positional` declarations before any `positionals`
+  declaration.
+- `variadic` = the (at most one) `positionals` declaration, with its
+  `min:`/`max:` bounds.
+- `trailing` = `positional` declarations after the `positionals`
+  declaration.
 - `tokens` = the list of unconsumed tokens.
 
 Binding rules:
 
-1. The macro layer enforces **at most one variadic positional** per
-   command. Violation is a compile error.
-2. Required scalars must be present. `M = tokens.size`, `L =
-   leading.size`, `R = trailing.size`. If `M < L + R`, parse error
-   ("expected at least N positional args, got M").
-3. Leading scalars bind to `tokens[0..L-1]`.
-4. Trailing scalars bind to `tokens[M-R..M-1]`.
-5. Variadic gets `tokens[L..M-R-1]` (possibly empty). Its `min:`/`max:`
-   bounds are then checked.
-6. If there is no variadic, `M` must equal `L + R` plus the number of
-   trailing optionals satisfied (left to right). Extra tokens → parse
-   error.
-7. Optional scalar positionals (nillable type) are allowed only at
-   the trailing end of the declaration list and only when there is no
-   variadic. Other placements are a compile error.
+1. At most one `positionals` declaration per command (compile error
+   otherwise).
+2. Optional scalar positionals (nillable type) are allowed only at the
+   trailing end of the declaration list and only when there is no
+   `positionals`. Other placements are a compile error.
+3. Pre-check: `tokens.size >= leading.size + variadic.min + trailing.size`.
+   Otherwise parse error ("expected at least N positional args,
+   got M").
+4. Implementation pattern (generated per command):
+
+   ```crystal
+   def bind_positionals(args : Array(String))
+     stack = args.dup
+     # leading scalars
+     name = stack.shift? || raise ArgumentError.new("missing <name>")
+     # variadic
+     while stack.size > {{ trailing.size }}
+       files << stack.shift
+     end
+     # trailing scalars
+     destination = stack.shift? || raise ArgumentError.new("missing <destination>")
+     raise ArgumentError.new("too many positional args") unless stack.empty?
+     # transformers/validators run next, populating the instance
+   end
+   ```
+
+5. After binding, the variadic's `min:` and `max:` bounds are checked.
+6. Per-element transformers run on the variadic's contents and on each
+   scalar's bound token, then validators run.
 
 ### Cases (declared → ARGV → binding)
 
@@ -450,9 +599,10 @@ Positional arguments:
 ```
 
 Help formatting is opinionated; only `header`, `footer`, and `usage`
-are configurable on `command` in v1.
+are configurable on `command` in v1. Flags or positionals declared
+with `hidden: true` are omitted from help.
 
-## Completion script generation
+## Completion script generation and installation
 
 Each command class exposes:
 
@@ -462,29 +612,50 @@ MyCli.completion_script(:zsh)  : String
 MyCli.completion_script(:fish) : String
 ```
 
-These return the full script as a `String`. `dispatch` provides a
-built-in `__completion <shell>` mode that prints the script to stdout
-for installation:
+These return the full script as a `String`. They are also reachable
+through the install flag (default `--shell-completion`, customizable
+via `shell_completion_flag "--foo"` inside the top-level `command`
+block).
 
+Install-flag behavior, in `dispatch`:
+
+1. If `ARGV[0]` is the install flag:
+   1. If `ARGV[1]` is missing or not a recognized shell name, write
+      to STDERR the list of supported shells plus an example
+      installation command, and exit with status 1.
+   2. Otherwise, if STDOUT is a tty, write to STDERR a recommended
+      installation command (e.g.,
+      `eval "$(mycli --shell-completion bash)"`) and exit with status 1.
+      This prevents accidentally dumping shell code into a terminal.
+   3. Otherwise, write the completion script to STDOUT and exit 0.
+
+Sample install incantation:
+
+```sh
+eval "$(mycli --shell-completion bash)"            # interactive shell
+mycli --shell-completion bash > /etc/bash_completion.d/mycli   # system-wide
 ```
-mycli __completion bash > /etc/bash_completion.d/mycli
-```
+
+### What gets inlined vs called back
 
 The generated script inlines all **static** structure:
 
 - Subcommand names and descriptions.
-- Long-flag forms (canonical + aliases unless `hide_aliases:`).
-- Short flags.
-- `--no-*` complements for Bool flags.
-- Enum case names for `expand_enum:` flags.
-- Fixed `choices:` lists.
+- Canonical long flags, short flags, `--no-*` complements for Bool
+  flags.
+- Aliases (included; smart visibility happens at the runtime
+  callback, see Runtime completion dispatch).
+- Enum case names for `shortcut_flags:` flags.
+- Fixed `choices:` lists when statically present.
 
-It defers **dynamic** positions to a runtime callback:
+It defers to a runtime callback for:
 
-- Any flag value with a `complete_with:` method.
-- Any positional with a `complete_with:` method.
-- Path / File / Dir typed values (fall back to shell-native file
-  completion).
+- Any flag value or positional with `complete_with:` (explicit) or
+  whose type's `__arg_complete` is non-trivial.
+- Smart alias filtering whenever a flag has aliases.
+- `@[Flags]` enum trailing-comma completion.
+- Path/File/Dir/EnvVar — emitted as shell-native sentinels (which the
+  shell handles directly without calling back).
 
 Generated bash callback shape:
 
@@ -497,8 +668,12 @@ _mycli() {
 complete -F _mycli mycli
 ```
 
+The hidden `__complete` form on the binary is an implementation
+detail used only by the generated shell scripts; it is not part of
+the user-facing CLI surface.
+
 Zsh and fish renderers use richer descriptors so each candidate shows
-its description.
+its description (from `Candidate#description`).
 
 ## Runtime completion dispatch
 
@@ -509,11 +684,22 @@ its description.
    errors, unresolved transformers downgraded to passthrough).
 2. Determines which slot the cursor is in (which flag's value, which
    positional position, or "expecting a flag/subcommand").
-3. Invokes the appropriate `complete_with:` method on a fresh instance
-   of the partially-populated command class (so the method can see
-   prior `@flag_values`).
-4. Prints candidates to stdout, one per line, optionally with
-   tab-separated descriptions.
+3. Builds the candidate list:
+   - When completing a flag name, expand all canonical long flags
+     plus their aliases. Filter against `COMP_WORDS[COMP_CWORD]`:
+     if any canonical form prefix-matches the active word, hide all
+     of that flag's aliases from the output; otherwise include any
+     alias that does prefix-match. Hidden flags (`hidden: true`)
+     are excluded outright.
+   - When completing a flag value or positional, look up the
+     completer chain (overridden by `complete_with:`) and invoke it
+     against a fresh instance of the partially-populated command
+     class so the method can read `@flag_values`.
+   - For `@[Flags]` enum values, if the active partial value ends
+     with `,`, offer only cases not already present.
+4. Prints candidates to stdout, one per line. Zsh/fish renderers
+   include tab-separated descriptions when the completer returns
+   `Array(Candidate)`.
 
 ## Shell support
 
@@ -539,10 +725,11 @@ src/
   shell-auto_complete.cr            # entry point, requires below
   shell-auto_complete/
     command.cr                       # base class, dispatch, parse
+    candidate.cr                     # Candidate struct
     macros/
-      command.cr                     # command, subcommand macros
+      command.cr                     # command, subcommand, shell_completion_flag
       flag.cr                        # flag macro + parsing
-      positional.cr                  # positional macro + binding
+      positional.cr                  # positional + positionals macros + binding
     transformers/
       scalar.cr
       collection.cr
@@ -550,9 +737,11 @@ src/
       enum.cr
     types/
       positive_int.cr
+      non_negative_int.cr
       percentage.cr
       epoch_time.cr
       date.cr
+      env_var.cr
     completion/
       context.cr
       dispatcher.cr
@@ -567,14 +756,14 @@ specs/
   2026-05-10-shell-autocomplete-api-design.md     # this file
 ```
 
-## Open questions (deferred to implementation)
+## Decisions deferred to implementation
 
-- Whether the macro layer should run a basic completeness check at
-  compile time (warn on commands with no subcommands and no
-  positionals/flags).
-- Exact shell-script behavior when `mycli` is invoked via an alias or
-  symlink — does completion follow the alias?
-- Cache invalidation for the completion script (re-installing after
-  the binary changes).
-
-These are implementation decisions, not API decisions.
+- **Completeness check (yes, minimal):** the macro layer emits a
+  compile error when a `command` class has no `flag`, no
+  `positional`/`positionals`, and no `subcommand` declarations. The
+  shard does not check for "useful" content beyond that.
+- **Symlink/alias completion** — not addressed in v1. A future
+  enhancement may detect symlinked invocation and adjust the
+  registered completion command name.
+- **Completion-script cache invalidation** — not addressed in v1.
+  Users re-install the script when needed.
