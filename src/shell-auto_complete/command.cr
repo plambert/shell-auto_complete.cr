@@ -111,11 +111,55 @@ module Shell::AutoComplete
           \{% end %}
         \{% end %}
         positional_tokens = result[:positional]
-        pos_index = 0
-        \{% for ivar in @type.instance_vars %}
-          \{% if pann = ivar.annotation(::Shell::AutoComplete::PositionalDef) %}
-            if pos_index < positional_tokens.size
-              raw_pos_\{{ivar.name}} = positional_tokens[pos_index]
+        positional_stack = positional_tokens.dup
+        \{% begin %}
+          \{%
+            variadic_count = 0
+            @type.instance_vars.each do |ivar|
+              variadic_count += 1 if ivar.annotation(::Shell::AutoComplete::PositionalsDef)
+            end
+            raise "command #{@type} declares more than one positionals" if variadic_count > 1
+
+            leading_ivars = [] of MetaVar
+            trailing_ivars = [] of MetaVar
+            variadic_ivar = nil
+            variadic_ann = nil
+            @type.instance_vars.each do |ivar|
+              if ivar.annotation(::Shell::AutoComplete::PositionalDef)
+                if variadic_ivar
+                  trailing_ivars << ivar
+                else
+                  leading_ivars << ivar
+                end
+              elsif vann = ivar.annotation(::Shell::AutoComplete::PositionalsDef)
+                variadic_ivar = ivar
+                variadic_ann = vann
+              end
+            end
+
+            required_leading_count = 0
+            leading_ivars.each do |iv|
+              required_leading_count += 1 if iv.annotation(::Shell::AutoComplete::PositionalDef)[:required]
+            end
+            required_trailing_count = 0
+            trailing_ivars.each do |iv|
+              required_trailing_count += 1 if iv.annotation(::Shell::AutoComplete::PositionalDef)[:required]
+            end
+            var_min = variadic_ann ? variadic_ann[:min] : 0
+            min_required = required_leading_count + required_trailing_count + var_min
+          %}
+          if positional_stack.size < \{{ min_required }}
+            raise ::Shell::AutoComplete::ParseError.new("missing required positional arguments: expected at least \{{ min_required }}, got #{positional_stack.size}")
+          end
+          # Shift leading scalars
+          \{% for ivar in leading_ivars %}
+            if positional_stack.empty?
+              \{% if ivar.annotation(::Shell::AutoComplete::PositionalDef)[:required] %}
+                raise ::Shell::AutoComplete::ParseError.new("missing positional argument: \{{ivar.name}}")
+              \{% end %}
+            else
+              raw_pos_\{{ivar.name}} = positional_stack.shift
+              \{% pann = ivar.annotation(::Shell::AutoComplete::PositionalDef) %}
               \{% if tw = pann[:transform_with] %}
                 transformed_pos_\{{ivar.name}} = self.\{{tw.id}}(raw_pos_\{{ivar.name}})
               \{% else %}
@@ -141,15 +185,62 @@ module Shell::AutoComplete
               when false
                 raise ::Shell::AutoComplete::ParseError.new("not a valid \{{ivar.name}}")
               end
-              pos_index += 1
-            \{% if pann[:required] %}
-            else
-              raise ::Shell::AutoComplete::ParseError.new("missing positional argument: \{{ivar.name}}")
-            \{% end %}
             end
           \{% end %}
+          # Shift variadic
+          \{% if variadic_ivar %}
+            \{% var_inner_type = variadic_ivar.type.type_vars[0] %}
+            variadic_collected_\{{variadic_ivar.name}} = [] of \{{var_inner_type}}
+            while positional_stack.size > \{{trailing_ivars.size}}
+              raw_var_tok = positional_stack.shift
+              variadic_collected_\{{variadic_ivar.name}} << \{{var_inner_type}}.__arg_transform(raw_var_tok)
+            end
+            \{% var_actual_min = variadic_ann[:min] %}
+            if variadic_collected_\{{variadic_ivar.name}}.size < \{{var_actual_min}}
+              raise ::Shell::AutoComplete::ParseError.new(
+                "expected at least \{{var_actual_min}} value(s) for \{{variadic_ivar.name}}, got #{variadic_collected_\{{variadic_ivar.name}}.size}"
+              )
+            end
+            inst.\{{variadic_ivar.name}} = variadic_collected_\{{variadic_ivar.name}}
+          \{% end %}
+          # Shift trailing scalars
+          \{% for ivar in trailing_ivars %}
+            if positional_stack.empty?
+              \{% if ivar.annotation(::Shell::AutoComplete::PositionalDef)[:required] %}
+                raise ::Shell::AutoComplete::ParseError.new("missing positional argument: \{{ivar.name}}")
+              \{% end %}
+            else
+              raw_pos_\{{ivar.name}} = positional_stack.shift
+              \{% pann = ivar.annotation(::Shell::AutoComplete::PositionalDef) %}
+              \{% if tw = pann[:transform_with] %}
+                transformed_pos_\{{ivar.name}} = self.\{{tw.id}}(raw_pos_\{{ivar.name}})
+              \{% else %}
+                \{% pos_inner_type = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
+                transformed_pos_\{{ivar.name}} = \{{pos_inner_type}}.__arg_transform(raw_pos_\{{ivar.name}})
+              \{% end %}
+              inst.\{{ivar.name}} = transformed_pos_\{{ivar.name}}
+              \{% if vw = pann[:validate_with] %}
+                result_v_pos_\{{ivar.name}} = self.\{{vw.id}}(transformed_pos_\{{ivar.name}})
+              \{% else %}
+                \{% pos_inner_type_v = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
+                \{% if pos_inner_type_v.resolve.class.methods.any? { |m| m.name.stringify == "__arg_validate" } %}
+                  result_v_pos_\{{ivar.name}} = \{{pos_inner_type_v}}.__arg_validate(transformed_pos_\{{ivar.name}}, **\{{pann[:forwarded_opts]}})
+                \{% else %}
+                  result_v_pos_\{{ivar.name}} = true
+                \{% end %}
+              \{% end %}
+              case result_v_pos_\{{ivar.name}}
+              when true
+                # ok
+              when String
+                raise ::Shell::AutoComplete::ParseError.new(result_v_pos_\{{ivar.name}}.as(String))
+              when false
+                raise ::Shell::AutoComplete::ParseError.new("not a valid \{{ivar.name}}")
+              end
+            end
+          \{% end %}
+          raise ::Shell::AutoComplete::ParseError.new("too many positional arguments") unless positional_stack.empty?
         \{% end %}
-        raise ::Shell::AutoComplete::ParseError.new("too many positional arguments") if pos_index < positional_tokens.size
         inst
       end
 
