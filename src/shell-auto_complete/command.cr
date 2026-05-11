@@ -113,7 +113,37 @@ module Shell::AutoComplete
         inst
       end
 
-      def self.dispatch(argv : Array(String)) : self
+      def self.help : String
+        flags = [] of ::Shell::AutoComplete::Help::FlagRow
+        \{% for ivar in @type.instance_vars %}
+          \{% if fann = ivar.annotation(::Shell::AutoComplete::FlagDef) %}
+            \{% unless fann[:hidden] %}
+              \{% alias_list = fann[:aliases] %}
+              flags << {
+                canonical:   \{{fann[:canonical]}}.as(String),
+                aliases:     \{% if alias_list.empty? %}([] of String)\{% else %}\{{alias_list}}.map(&.as(String))\{% end %},
+                short:       \{{fann[:short]}}.as(String?),
+                description: \{{fann[:description]}}.as(String),
+              }
+            \{% end %}
+          \{% end %}
+        \{% end %}
+        {% cmd_ann = @type.annotation(::Shell::AutoComplete::CommandDef) %}
+        ::Shell::AutoComplete::Help.render(
+          command_name: command_name,
+          description:  {{ cmd_ann && cmd_ann[:description] ? cmd_ann[:description] : "" }}.as(String),
+          flags:        flags,
+          header:       {{ cmd_ann && cmd_ann[:header] ? cmd_ann[:header] : nil }}.as(String?),
+          footer:       {{ cmd_ann && cmd_ann[:footer] ? cmd_ann[:footer] : nil }}.as(String?),
+          usage:        {{ cmd_ann && cmd_ann[:usage] ? cmd_ann[:usage] : nil }}.as(String?),
+        )
+      end
+
+      def self.dispatch(argv : Array(String), stdout : IO = STDOUT, stderr : IO = STDERR) : self?
+        if argv.includes?("--help") || argv.includes?("-h")
+          stdout.puts help
+          return nil
+        end
         inst = parse(argv)
         inst.run
         inst

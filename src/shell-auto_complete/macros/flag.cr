@@ -73,6 +73,7 @@ module Shell::AutoComplete
         short: {{ short_form }},
         description: {{ description }},
         negatable: {% if opts[:negatable] == nil %}true{% else %}{{ opts[:negatable] }}{% end %},
+        hidden: {% if opts[:hidden] == nil %}false{% else %}{{ opts[:hidden] }}{% end %},
         transform_with: {{ opts[:transform_with] }},
         validate_with: {{ opts[:validate_with] }},
         forwarded_opts: {% if forwarded_pairs.empty? %}NamedTuple.new{% else %}{ {{ forwarded_pairs.join(", ").id }} }{% end %},

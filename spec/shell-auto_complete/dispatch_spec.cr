@@ -19,9 +19,12 @@ end
 
 describe "Command.dispatch" do
   it "parses argv and invokes #run, returning the populated instance" do
-    inst = DispatchTestCli.dispatch(["--message", "hi"])
-    inst.message.should eq("hi")
-    inst.ran?.should be_true
+    result = DispatchTestCli.dispatch(["--message", "hi"])
+    result.should_not be_nil
+    if inst = result
+      inst.message.should eq("hi")
+      inst.ran?.should be_true
+    end
   end
 
   it "still raises NotRunnable when subclass does not override #run" do
