@@ -6,6 +6,7 @@ module Shell::AutoComplete
   end
 
   class ParseError < Error
+    property command_path : String? = nil
   end
 
   class SystemExit < Error

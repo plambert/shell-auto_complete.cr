@@ -2,6 +2,12 @@
 
 All notable changes are documented here.
 
+## [0.9.2] - 2026-05-12
+
+### Fixed
+
+- Rescued errors now show the full command path. `multitool scan deep --bogus` now prints `multitool scan deep: unknown flag: --bogus` instead of just `multitool: ...`. Implemented via a `command_path` field on `ParseError` that each `dispatch` level prepends to before re-raising.
+
 ## [0.9.1] - 2026-05-12
 
 ### Fixed

@@ -61,3 +61,45 @@ describe "dispatch rescue_errors (default true)" do
     result[:stderr].should contain("rescuex:")
   end
 end
+
+describe "dispatch rescue prints full path for nested commands" do
+  it "<parent> <child>: <msg>" do
+    project_root = "#{__DIR__}/../.."
+    src = <<-CR
+      require "./src/shell-auto_complete"
+
+      Shell::AutoComplete.command NestedChild, name: "child", description: "c" do
+        flag value : Int32?, "--value", "v"
+        def run
+        end
+      end
+
+      Shell::AutoComplete.command NestedParent, name: "parent", description: "p" do
+        subcommand NestedChild
+      end
+
+      NestedParent.dispatch(ARGV)
+      CR
+    src_file = File.tempfile("sac-nested-err-src", ".cr", dir: project_root)
+    bin_file = File.tempfile("sac-nested-err-bin", dir: project_root)
+    begin
+      File.write(src_file.path, src)
+      build = Process.run(
+        "crystal",
+        ["build", src_file.path, "-o", bin_file.path],
+        output: Process::Redirect::Close,
+        error: Process::Redirect::Close,
+      )
+      raise "compile failed" unless build.success?
+      out_io = IO::Memory.new
+      err_io = IO::Memory.new
+      status = Process.run(bin_file.path, ["child", "--bogus"], output: out_io, error: err_io)
+      status.success?.should be_false
+      err_io.to_s.should contain("parent child:")
+      err_io.to_s.should contain("unknown flag")
+    ensure
+      src_file.delete
+      File.delete(bin_file.path) if File.exists?(bin_file.path)
+    end
+  end
+end

@@ -573,43 +573,53 @@ module Shell::AutoComplete
         if rescue_errors
           begin
             return dispatch(argv, stdout: stdout, stderr: stderr, rescue_errors: false)
-          rescue ex : ::Shell::AutoComplete::ParseError | ::ArgumentError
-            stderr.puts "#{command_name}: #{ex.message}"
+          rescue ex : ::Shell::AutoComplete::ParseError
+            stderr.puts "#{ex.command_path || command_name}: #{ex.message}"
             Process.exit(1)
           end
         end
-        if ::Shell::AutoComplete::Completion::Dispatcher.handle(self, argv, stdout)
-          return
+
+        begin
+          if ::Shell::AutoComplete::Completion::Dispatcher.handle(self, argv, stdout)
+            return
+          end
+          if ::Shell::AutoComplete::Completion::InstallFlag.handle(self, argv, stdout, stderr)
+            return
+          end
+          # Subcommand routing first — let the matched subcommand handle its own --help
+          if !argv.empty? && (match = SUBCOMMANDS.find { |(name, _)| name == argv[0] })
+            return match[1].dispatch(argv[1..], stdout: stdout, stderr: stderr, rescue_errors: false)
+          end
+          # If we have subcommands but no argv, show help instead of trying to run.
+          if !SUBCOMMANDS.empty? && argv.empty?
+            stdout.puts help
+            return
+          end
+          # --all-help intercept: only fires when this command has subcommands
+          if argv.includes?("--all-help") && !SUBCOMMANDS.empty?
+            stdout.puts all_help
+            return
+          end
+          # --help / -h intercept at THIS level (no subcommand matched)
+          if argv.includes?("--help") || argv.includes?("-h")
+            stdout.puts help
+            return
+          end
+          # Unknown subcommand rejection
+          if !SUBCOMMANDS.empty? && !argv.empty?
+            raise ::Shell::AutoComplete::ParseError.new("unknown subcommand: #{argv[0]}")
+          end
+          inst = parse(argv)
+          inst.run
+          inst
+        rescue ex : ::Shell::AutoComplete::ParseError
+          ex.command_path = ex.command_path ? "#{command_name} #{ex.command_path}" : command_name
+          raise ex
+        rescue ex : ::ArgumentError
+          new_err = ::Shell::AutoComplete::ParseError.new(ex.message || "argument error")
+          new_err.command_path = command_name
+          raise new_err
         end
-        if ::Shell::AutoComplete::Completion::InstallFlag.handle(self, argv, stdout, stderr)
-          return
-        end
-        # Subcommand routing first — let the matched subcommand handle its own --help
-        if !argv.empty? && (match = SUBCOMMANDS.find { |(name, _)| name == argv[0] })
-          return match[1].dispatch(argv[1..], stdout: stdout, stderr: stderr, rescue_errors: false)
-        end
-        # If we have subcommands but no argv, show help instead of trying to run.
-        if !SUBCOMMANDS.empty? && argv.empty?
-          stdout.puts help
-          return
-        end
-        # --all-help intercept: only fires when this command has subcommands
-        if argv.includes?("--all-help") && !SUBCOMMANDS.empty?
-          stdout.puts all_help
-          return
-        end
-        # --help / -h intercept at THIS level (no subcommand matched)
-        if argv.includes?("--help") || argv.includes?("-h")
-          stdout.puts help
-          return
-        end
-        # Unknown subcommand rejection
-        if !SUBCOMMANDS.empty? && !argv.empty?
-          raise ::Shell::AutoComplete::ParseError.new("unknown subcommand: #{argv[0]}")
-        end
-        inst = parse(argv)
-        inst.run
-        inst
       end
     end
 
