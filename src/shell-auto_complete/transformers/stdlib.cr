@@ -37,3 +37,16 @@ class Regex
     Regex.new(value)
   end
 end
+
+struct Socket::IPAddress
+  def self.__arg_transform(value : String, **opts) : Socket::IPAddress
+    if colon_index = value.rindex(':')
+      host = value[0, colon_index]
+      port_str = value[colon_index + 1..]
+      port = port_str.to_i32? || raise ArgumentError.new("invalid port in #{value.inspect}: #{port_str.inspect}")
+      Socket::IPAddress.new(host, port)
+    else
+      Socket::IPAddress.new(value, 0)
+    end
+  end
+end

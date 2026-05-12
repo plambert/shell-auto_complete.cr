@@ -184,6 +184,8 @@ module Shell::AutoComplete
                   if v = raw_last
                     \{% if tw = fann[:transform_with] %}
                       transformed_value = self.\{{tw.id}}(v)
+                    \{% elsif fann[:transformer_type] %}
+                      transformed_value = \{{fann[:transformer_type]}}.__arg_transform(v, **\{{fann[:forwarded_opts]}})
                     \{% else %}
                       \{% inner_type = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
                       transformed_value = \{{inner_type}}.__arg_transform(v, **\{{fann[:forwarded_opts]}})

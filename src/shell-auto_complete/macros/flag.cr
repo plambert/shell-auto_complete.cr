@@ -65,6 +65,25 @@ module Shell::AutoComplete
           next if consumed_keys.includes?(opt_key)
           forwarded_pairs << "#{opt_key}: #{opt_val}"
         end
+
+        # Resolve the storage type: if __arg_transform returns a different base type
+        # than the declared type (e.g. File -> Path, Dir -> Path), use the
+        # return type of __arg_transform as the property storage type.
+        # We compare base names (before any generic params) so that Array(T) -> Array(T)
+        # is correctly treated as non-remapped even though strings differ.
+        decl_nullable = decl_type.is_a?(Union)
+        decl_inner = decl_nullable ? decl_type.types.reject { |type_node| type_node.resolve == Nil }[0] : decl_type
+        storage_inner = decl_inner
+        if decl_inner.resolve.class.methods.any? { |meth| meth.name.stringify == "__arg_transform" }
+          decl_inner.resolve.class.methods.each do |meth|
+            if meth.name.stringify == "__arg_transform"
+              storage_inner = meth.return_type
+            end
+          end
+        end
+        decl_base = decl_inner.id.stringify.split("(")[0]
+        storage_base = storage_inner.id.stringify.split("(")[0]
+        storage_remapped = decl_base != storage_base
       %}
 
       @[::Shell::AutoComplete::FlagDef(
@@ -80,8 +99,17 @@ module Shell::AutoComplete
         set_operations: {% if opts[:set_operations] %}true{% else %}false{% end %},
         delimiter: {% if opts.keys.map(&.stringify).includes?("delimiter") %}{{ opts[:delimiter] }}{% else %}","{% end %},
         forwarded_opts: {% if forwarded_pairs.empty? %}NamedTuple.new{% else %}{ {{ forwarded_pairs.join(", ").id }} }{% end %},
+        transformer_type: {% if storage_remapped %}{{ decl_inner }}{% else %}nil{% end %},
       )]
-      property {{ decl }}
+      {% if storage_remapped %}
+        {% if decl_nullable %}
+          property {{ decl.var }} : {{ storage_inner }}?
+        {% else %}
+          property {{ decl.var }} : {{ storage_inner }}
+        {% end %}
+      {% else %}
+        property {{ decl }}
+      {% end %}
     end
   end
 end
