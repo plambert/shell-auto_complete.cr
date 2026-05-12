@@ -552,10 +552,10 @@ module Shell::AutoComplete
           end
         end
         if ::Shell::AutoComplete::Completion::Dispatcher.handle(self, argv, stdout)
-          return nil
+          return
         end
         if ::Shell::AutoComplete::Completion::InstallFlag.handle(self, argv, stdout, stderr)
-          return nil
+          return
         end
         # Subcommand routing first — let the matched subcommand handle its own --help
         if !argv.empty? && (match = SUBCOMMANDS.find { |(name, _)| name == argv[0] })
@@ -564,12 +564,12 @@ module Shell::AutoComplete
         # --all-help intercept: only fires when this command has subcommands
         if argv.includes?("--all-help") && !SUBCOMMANDS.empty?
           stdout.puts all_help
-          return nil
+          return
         end
         # --help / -h intercept at THIS level (no subcommand matched)
         if argv.includes?("--help") || argv.includes?("-h")
           stdout.puts help
-          return nil
+          return
         end
         # Unknown subcommand rejection
         if !SUBCOMMANDS.empty? && !argv.empty?
