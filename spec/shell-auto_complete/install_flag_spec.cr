@@ -72,7 +72,7 @@ describe "shell_completion_flag macro" do
     # With a custom flag name, the default --shell-completion is not intercepted
     # and would be treated as a regular (unknown) flag.
     expect_raises(Shell::AutoComplete::ParseError) do
-      CustomInstallCli.dispatch(["--shell-completion", "bash"])
+      CustomInstallCli.dispatch(["--shell-completion", "bash"], rescue_errors: false)
     end
   end
 end

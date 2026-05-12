@@ -66,7 +66,7 @@ describe "--all-help" do
 
   it "rejects --all-help on a leaf command (no subcommands)" do
     expect_raises(Shell::AutoComplete::ParseError) do
-      AllHelpLeafOnly.dispatch(["--all-help"])
+      AllHelpLeafOnly.dispatch(["--all-help"], rescue_errors: false)
     end
   end
 
@@ -78,13 +78,13 @@ describe "--all-help" do
       end
     CR
     tmp = File.tempfile("sac-allhelp-reserved", ".cr",
-                       dir: File.expand_path("#{__DIR__}/../.."))
+      dir: File.expand_path("#{__DIR__}/../.."))
     begin
       File.write(tmp.path, src)
       result = Process.run("crystal",
-                          ["build", "--no-codegen", tmp.path],
-                          output: Process::Redirect::Close,
-                          error: Process::Redirect::Close)
+        ["build", "--no-codegen", tmp.path],
+        output: Process::Redirect::Close,
+        error: Process::Redirect::Close)
       result.success?.should be_false
     ensure
       tmp.delete

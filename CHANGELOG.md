@@ -12,6 +12,7 @@ Initial release.
 
 ### Added
 
+- `dispatch(argv, rescue_errors: true)` (default) catches `Shell::AutoComplete::ParseError` and `ArgumentError` raised during parsing/transforming/validating, prints a friendly `Error: …` message to STDERR, and exits 1. Pass `rescue_errors: false` to let exceptions propagate (useful for tests or programmatic embedding).
 - `--all-help` flag (auto-generated on any command that declares `subcommand`s): prints the command's help plus the help of every descendant in the subcommand tree, separated by `==== <full path> ====` headers. Leaf commands (no subcommands declared) do NOT accept `--all-help` — it falls through as an unknown flag.
 - **Macro DSL**: `command`, `flag`, `positional`, `positionals`, `subcommand`, `shell_completion_flag` macros.
 - **ARGV parser**: long flags (`--foo val`, `--foo=val`), short flags (`-f val`), long-flag aliases, `--` separator.

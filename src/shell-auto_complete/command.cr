@@ -542,7 +542,18 @@ module Shell::AutoComplete
         result
       end
 
-      def self.dispatch(argv : Array(String), stdout : IO = STDOUT, stderr : IO = STDERR) : ::Shell::AutoComplete::Command?
+      def self.dispatch(argv : Array(String), stdout : IO = STDOUT, stderr : IO = STDERR, rescue_errors : Bool = true) : ::Shell::AutoComplete::Command?
+        if rescue_errors
+          begin
+            return dispatch(argv, stdout: stdout, stderr: stderr, rescue_errors: false)
+          rescue ex : ::Shell::AutoComplete::ParseError
+            stderr.puts "Error: #{ex.message}"
+            Process.exit(1)
+          rescue ex : ::ArgumentError
+            stderr.puts "Error: #{ex.message}"
+            Process.exit(1)
+          end
+        end
         if ::Shell::AutoComplete::Completion::Dispatcher.handle(self, argv, stdout)
           return nil
         end
@@ -551,7 +562,7 @@ module Shell::AutoComplete
         end
         # Subcommand routing first — let the matched subcommand handle its own --help
         if !argv.empty? && (match = SUBCOMMANDS.find { |(name, _)| name == argv[0] })
-          return match[1].dispatch(argv[1..], stdout: stdout, stderr: stderr)
+          return match[1].dispatch(argv[1..], stdout: stdout, stderr: stderr, rescue_errors: false)
         end
         # --all-help intercept: only fires when this command has subcommands
         if argv.includes?("--all-help") && !SUBCOMMANDS.empty?

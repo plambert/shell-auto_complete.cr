@@ -66,7 +66,7 @@ describe "subcommand routing" do
 
   it "raises ParseError when the first arg is not a known subcommand" do
     expect_raises(Shell::AutoComplete::ParseError) do
-      SubParent.dispatch(["bogus"])
+      SubParent.dispatch(["bogus"], rescue_errors: false)
     end
   end
 

@@ -22,6 +22,12 @@ Metrics/CyclomaticComplexity:
 # ```
 # tokens.each { |t| t.last_accessed_at = Time.utc }
 # ```
+Style/HeredocEscape:
+  Enabled: false
+
+Style/HeredocIndent:
+  Enabled: false
+
 Naming/BlockParameterName:
   Enabled: true
   MinNameLength: 3
