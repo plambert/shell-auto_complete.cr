@@ -1,3 +1,4 @@
+# :nodoc:
 class Array(T)
   def self.__arg_transform(value : String, **opts) : Array(T)
     delim = opts[:delimiter]?
@@ -13,6 +14,7 @@ class Array(T)
   end
 end
 
+# :nodoc:
 struct Set(T)
   def self.__arg_transform(value : String, **opts) : Set(T)
     delim = opts[:delimiter]?

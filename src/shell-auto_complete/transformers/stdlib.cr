@@ -2,12 +2,14 @@ require "uri"
 require "log"
 require "socket"
 
+# :nodoc:
 class URI
   def self.__arg_transform(value : String, **opts) : URI
     URI.parse(value)
   end
 end
 
+# :nodoc:
 struct Time
   def self.__arg_transform(value : String, **opts) : Time
     # Try ISO 8601 / RFC 3339 first (most common CLI input)
@@ -26,18 +28,21 @@ struct Time
   end
 end
 
+# :nodoc:
 enum ::Log::Severity
   def self.__arg_transform(value : String, **opts) : ::Log::Severity
     parse(value.tr("-", "_"))
   end
 end
 
+# :nodoc:
 class Regex
   def self.__arg_transform(value : String, **opts) : Regex
     Regex.new(value)
   end
 end
 
+# :nodoc:
 struct Socket::IPAddress
   def self.__arg_transform(value : String, **opts) : Socket::IPAddress
     if colon_index = value.rindex(':')

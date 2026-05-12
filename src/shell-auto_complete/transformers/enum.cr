@@ -1,3 +1,4 @@
+# :nodoc:
 struct Enum
   def self.__arg_transform(value : String, **opts) : self
     # Handle comma-separated values for @[Flags] enums (e.g. "read,write").
