@@ -26,8 +26,10 @@ Initial release.
 ### Deferred to future releases
 
 - POSIX-style boolean short-flag combining (`-abc` → `-a -b -c`).
-- Path/File/Dir shell-native completion sentinels in generated scripts.
-- Completer-side override (`complete_with:`) — currently the inherited completer only handles flag names and enum cases.
-- PowerShell, nushell, elvish.
+- Path/File/Dir/EnvVar shell-native completion sentinels in generated scripts (file completion currently relies on the shell's own filename completion, not directed by the binary).
+- `Symbol`-typed flags (Crystal's symbols are closed at compile time; use `String` + `choices:` instead).
+- `Hash(String, T)` variadic positionals (variadic-only Array(T)/Set(T) for now).
+- PowerShell, nushell, elvish renderers.
 - Symlink-aware completion installation.
 - Generated-script cache invalidation.
+- `max:` enforcement on variadic positionals (currently accepted but not validated).

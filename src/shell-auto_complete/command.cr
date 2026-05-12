@@ -182,6 +182,16 @@ module Shell::AutoComplete
               if vs = result[:values][\{{fann[:canonical]}}]?
                 if raw_last = vs.last?
                   if v = raw_last
+                    \{% is_nullable = ivar.type.union? && ivar.type.union_types.includes?(Nil) %}
+                    \{% inner_type = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
+                    \{% inner_is_string = inner_type.id.stringify == "String" %}
+                    # Nillability via empty string: an explicit empty value on a
+                    # nullable non-String type resets the property to nil.
+                    \{% if is_nullable && !inner_is_string %}
+                      if v.empty?
+                        inst.\{{ivar.name}} = nil
+                      else
+                    \{% end %}
                     \{% per_flag_transform_method = "__arg_transform_" + ivar.name.stringify %}
                     \{% has_per_flag_transform = @type.class.methods.any? { |m| m.name.stringify == per_flag_transform_method } %}
                     \{% if has_per_flag_transform %}
@@ -191,11 +201,10 @@ module Shell::AutoComplete
                     \{% elsif fann[:transformer_type] %}
                       transformed_value = \{{fann[:transformer_type]}}.__arg_transform(v, **\{{fann[:forwarded_opts]}})
                     \{% else %}
-                      \{% inner_type = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
                       transformed_value = \{{inner_type}}.__arg_transform(v, **\{{fann[:forwarded_opts]}})
                     \{% end %}
                     inst.\{{ivar.name}} = transformed_value
-                    \{% inner_type_v = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
+                    \{% inner_type_v = inner_type %}
                     \{% per_flag_validate_method = "__arg_validate_" + ivar.name.stringify %}
                     \{% has_per_flag_validate = @type.class.methods.any? { |m| m.name.stringify == per_flag_validate_method } %}
                     \{% if has_per_flag_validate %}
@@ -215,6 +224,9 @@ module Shell::AutoComplete
                     when false
                       raise ::Shell::AutoComplete::ParseError.new("not a valid \{{ivar.name}}")
                     end
+                    \{% if is_nullable && !inner_is_string %}
+                      end
+                    \{% end %}
                   end
                 end
               end

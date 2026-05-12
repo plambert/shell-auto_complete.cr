@@ -41,7 +41,15 @@ module Shell::AutoComplete
         aliases = long_forms.size > 1 ? long_forms[1..-1] : [] of StringLiteral
         description = description || ""
 
-        reserved = ["--help", "-h", "--shell-completion"]
+        # Build reserved list: always --help and -h; shell-completion flag is
+        # configurable via `shell_completion_flag` macro (reads the constant set
+        # by that macro, or falls back to the default "--shell-completion").
+        if @type.has_constant?("SHELL_COMPLETION_FLAG")
+          completion_reserved = @type.constant("SHELL_COMPLETION_FLAG")
+        else
+          completion_reserved = "--shell-completion"
+        end
+        reserved = ["--help", "-h", completion_reserved]
         long_forms.each do |long_form|
           raw = long_form.id.stringify
           raise "#{raw} is a reserved flag name" if reserved.includes?(raw)
@@ -52,6 +60,21 @@ module Shell::AutoComplete
         end
 
         decl_type = decl.type
+
+        # Guard: shortcut_flags: true is not valid for @[Flags] enums (which use
+        # comma-separated values, not per-case boolean shortcuts).
+        if opts[:shortcut_flags]
+          if decl_type.is_a?(Union)
+            sc_non_nil = decl_type.types.reject { |type_node| type_node.resolve == Nil }
+            sc_resolved = sc_non_nil.size == 1 ? sc_non_nil[0].resolve : nil
+          else
+            sc_resolved = decl_type.resolve
+          end
+          if sc_resolved && sc_resolved.annotation(::Flags)
+            raise "shortcut_flags: true is not valid for @[Flags] enums (flag #{decl.var})"
+          end
+        end
+
         if decl_type.is_a?(Union)
           non_nil_types = decl_type.types.reject { |type_node| type_node.resolve == Nil }
           if non_nil_types.size > 1 && opts[:transform_with] == nil

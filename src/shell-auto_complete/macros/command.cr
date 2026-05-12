@@ -11,8 +11,10 @@ module Shell::AutoComplete
     # Place this inside a `Shell::AutoComplete.command` block before any `flag`
     # declarations.
     macro shell_completion_flag(name)
+      SHELL_COMPLETION_FLAG = {{name}}
+
       def self.shell_completion_flag_name : String
-        {{ name }}
+        {{name}}
       end
     end
   end
