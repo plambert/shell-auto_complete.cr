@@ -51,13 +51,13 @@ describe "dispatch rescue_errors (default true)" do
     result = run_rescue_example(["--bogus"])
     result[:status].success?.should be_false
     result[:status].exit_code.should eq(1)
-    result[:stderr].should contain("Error:")
+    result[:stderr].should contain("rescuex:")
   end
 
   it "validation failure (out-of-range Int32) → exits 1, writes to STDERR" do
     result = run_rescue_example(["--count", "100"])
     result[:status].success?.should be_false
     result[:status].exit_code.should eq(1)
-    result[:stderr].should contain("Error:")
+    result[:stderr].should contain("rescuex:")
   end
 end

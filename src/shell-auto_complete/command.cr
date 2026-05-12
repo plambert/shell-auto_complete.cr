@@ -324,6 +324,12 @@ module Shell::AutoComplete
                 "expected at least \{{var_actual_min}} value(s) for \{{variadic_ivar.name}}, got #{variadic_collected_\{{variadic_ivar.name}}.size}"
               )
             end
+            \{% var_actual_max = variadic_ann[:max] %}
+            if variadic_collected_\{{variadic_ivar.name}}.size > \{{var_actual_max}}
+              raise ::Shell::AutoComplete::ParseError.new(
+                "too many <\{{variadic_ivar.name}}> args: got #{variadic_collected_\{{variadic_ivar.name}}.size}, max \{{var_actual_max}}"
+              )
+            end
             inst.\{{variadic_ivar.name}} = variadic_collected_\{{variadic_ivar.name}}
           \{% end %}
           # Shift trailing scalars
@@ -383,12 +389,33 @@ module Shell::AutoComplete
           \{% end %}
         \{% end %}
         subcommands = SUBCOMMANDS.map { |(name, klass)| {name: name, description: klass.command_description} }
+        positionals = [] of ::Shell::AutoComplete::Help::PositionalRow
+        \{% for ivar in @type.instance_vars %}
+          \{% if pann = ivar.annotation(::Shell::AutoComplete::PositionalDef) %}
+            \{% unless pann[:hidden] %}
+              positionals << {
+                name:        \{{ivar.name.stringify}}.as(String),
+                description: \{{pann[:description]}}.as(String),
+                variadic:    false,
+              }
+            \{% end %}
+          \{% elsif vann = ivar.annotation(::Shell::AutoComplete::PositionalsDef) %}
+            \{% unless vann[:hidden] %}
+              positionals << {
+                name:        \{{ivar.name.stringify}}.as(String),
+                description: \{{vann[:description]}}.as(String),
+                variadic:    true,
+              }
+            \{% end %}
+          \{% end %}
+        \{% end %}
         {% cmd_ann = @type.annotation(::Shell::AutoComplete::CommandDef) %}
         ::Shell::AutoComplete::Help.render(
           command_name: command_name,
           description:  {{ cmd_ann && cmd_ann[:description] ? cmd_ann[:description] : "" }}.as(String),
           flags:        flags,
           subcommands:  subcommands,
+          positionals:  positionals,
           header:       {{ cmd_ann && cmd_ann[:header] ? cmd_ann[:header] : nil }}.as(String?),
           footer:       {{ cmd_ann && cmd_ann[:footer] ? cmd_ann[:footer] : nil }}.as(String?),
           usage:        {{ cmd_ann && cmd_ann[:usage] ? cmd_ann[:usage] : nil }}.as(String?),
@@ -547,7 +574,7 @@ module Shell::AutoComplete
           begin
             return dispatch(argv, stdout: stdout, stderr: stderr, rescue_errors: false)
           rescue ex : ::Shell::AutoComplete::ParseError | ::ArgumentError
-            stderr.puts "Error: #{ex.message}"
+            stderr.puts "#{command_name}: #{ex.message}"
             Process.exit(1)
           end
         end
@@ -560,6 +587,11 @@ module Shell::AutoComplete
         # Subcommand routing first — let the matched subcommand handle its own --help
         if !argv.empty? && (match = SUBCOMMANDS.find { |(name, _)| name == argv[0] })
           return match[1].dispatch(argv[1..], stdout: stdout, stderr: stderr, rescue_errors: false)
+        end
+        # If we have subcommands but no argv, show help instead of trying to run.
+        if !SUBCOMMANDS.empty? && argv.empty?
+          stdout.puts help
+          return
         end
         # --all-help intercept: only fires when this command has subcommands
         if argv.includes?("--all-help") && !SUBCOMMANDS.empty?

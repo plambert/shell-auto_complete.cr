@@ -6,6 +6,11 @@ Shell::AutoComplete.command VarCli1, name: "v1", description: "x" do
   positionals files : Array(Path), "files", min: 1
 end
 
+# Case for max enforcement
+Shell::AutoComplete.command VarMaxCli, name: "vm", description: "x" do
+  positionals items : Array(String), "items", min: 1, max: 3
+end
+
 # Case 2: variadic + trailing scalar
 Shell::AutoComplete.command VarCli2, name: "v2", description: "x" do
   positionals files : Array(Path), "files"
@@ -78,5 +83,21 @@ describe "positionals (variadic)" do
   it "binds a bare variadic (multiple tokens)" do
     inst = VarCli4.parse(["a", "b", "c"])
     inst.tags.should eq(["a", "b", "c"])
+  end
+end
+
+describe "max enforcement on variadic positionals" do
+  it "rejects more than max variadic args" do
+    expect_raises(Shell::AutoComplete::ParseError, /too many/) do
+      VarMaxCli.parse(["a", "b", "c", "d"])
+    end
+  end
+
+  it "accepts up to max" do
+    VarMaxCli.parse(["a", "b", "c"]).items.should eq(%w[a b c])
+  end
+
+  it "accepts at min" do
+    VarMaxCli.parse(["a"]).items.should eq(%w[a])
   end
 end

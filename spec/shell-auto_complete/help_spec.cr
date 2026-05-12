@@ -5,6 +5,11 @@ Shell::AutoComplete.command HelpCli, name: "helpcli", description: "demo command
   flag count : Int32 = 1, "--count", "iterations"
 end
 
+Shell::AutoComplete.command HelpWithPosCli, name: "hp", description: "x" do
+  positional name : String, "the name"
+  positionals files : Array(Path), "files to process", min: 1
+end
+
 describe "Command.help" do
   it "renders usage" do
     HelpCli.help.should contain("Usage: helpcli")
@@ -39,5 +44,20 @@ describe "dispatch --help" do
     io = IO::Memory.new
     HelpCli.dispatch(["-h"], stdout: io)
     io.to_s.should contain("Usage: helpcli")
+  end
+end
+
+describe "positionals in help" do
+  it "renders positionals section" do
+    text = HelpWithPosCli.help
+    text.should contain("Positional arguments:")
+    text.should contain("<name>")
+    text.should contain("<files...>")
+    text.should contain("the name")
+    text.should contain("files to process")
+  end
+
+  it "includes positionals in default usage" do
+    HelpWithPosCli.help.should contain("Usage: hp <name> <files...>")
   end
 end

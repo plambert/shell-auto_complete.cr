@@ -2,6 +2,15 @@
 
 All notable changes are documented here.
 
+## [0.9.1] - 2026-05-12
+
+### Fixed
+
+- `--help` output now includes a `Positional arguments:` section listing each `positional` and `positionals` declaration with its name, description, and whether it is variadic. The default `Usage:` line also includes positional placeholders (e.g. `<name> <files...>`).
+- Dispatching a subcommand parent with no arguments (empty `argv`) now prints help and returns `nil` instead of raising `NotRunnable`.
+- `max:` option on `positionals` is now enforced at parse time; passing more values than the declared maximum raises `Shell::AutoComplete::ParseError`.
+- Rescued parse errors in `dispatch` are now prefixed with the command name in conventional Unix format (`<cmd>: <message>`) instead of the bare `Error: ` prefix.
+
 ## [0.1.0] - 2026-05-10
 
 Initial release.
@@ -38,4 +47,4 @@ Initial release.
 - PowerShell, nushell, elvish renderers.
 - Symlink-aware completion installation.
 - Generated-script cache invalidation.
-- `max:` enforcement on variadic positionals (currently accepted but not validated).
+- `max:` enforcement on variadic positionals (implemented in 0.9.1).

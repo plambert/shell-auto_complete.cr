@@ -80,6 +80,14 @@ describe "subcommand routing" do
   end
 end
 
+describe "empty argv on subcommand parent" do
+  it "prints help on empty argv when subcommands exist" do
+    io = IO::Memory.new
+    SubParent.dispatch([] of String, stdout: io)
+    io.to_s.should contain("Usage: parent")
+  end
+end
+
 describe "subcommand --help routing" do
   it "subcommand --help prints the subcommand's help, not the root's" do
     io = IO::Memory.new
