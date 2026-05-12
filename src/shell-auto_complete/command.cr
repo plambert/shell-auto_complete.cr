@@ -536,21 +536,18 @@ module Shell::AutoComplete
         if ::Shell::AutoComplete::Completion::InstallFlag.handle(self, argv, stdout, stderr)
           return nil
         end
+        # Subcommand routing first — let the matched subcommand handle its own --help
+        if !argv.empty? && (match = SUBCOMMANDS.find { |(name, _)| name == argv[0] })
+          return match[1].dispatch(argv[1..], stdout: stdout, stderr: stderr)
+        end
+        # --help / -h intercept at THIS level (no subcommand matched)
         if argv.includes?("--help") || argv.includes?("-h")
           stdout.puts help
           return nil
         end
-        # Subcommand routing
-        unless SUBCOMMANDS.empty?
-          first = argv.first?
-          if first.nil?
-            raise ::Shell::AutoComplete::ParseError.new("expected a subcommand")
-          end
-          match = SUBCOMMANDS.find { |(name, _)| name == first }
-          if match
-            return match[1].dispatch(argv[1..], stdout: stdout, stderr: stderr)
-          end
-          raise ::Shell::AutoComplete::ParseError.new("unknown subcommand: #{first}")
+        # Unknown subcommand rejection
+        if !SUBCOMMANDS.empty? && !argv.empty?
+          raise ::Shell::AutoComplete::ParseError.new("unknown subcommand: #{argv[0]}")
         end
         inst = parse(argv)
         inst.run

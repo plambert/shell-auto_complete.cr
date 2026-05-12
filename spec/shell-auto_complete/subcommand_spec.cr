@@ -79,3 +79,51 @@ describe "subcommand routing" do
     text.should contain("other command")
   end
 end
+
+describe "subcommand --help routing" do
+  it "subcommand --help prints the subcommand's help, not the root's" do
+    io = IO::Memory.new
+    SubParent.dispatch(["child", "--help"], stdout: io)
+    text = io.to_s
+    text.should contain("Usage: child")
+    text.should contain("child command")
+    text.should_not contain("Usage: parent")
+  end
+
+  it "subcommand -h does the same" do
+    io = IO::Memory.new
+    SubParent.dispatch(["child", "-h"], stdout: io)
+    text = io.to_s
+    text.should contain("Usage: child")
+  end
+
+  it "sub-subcommand --help prints the leaf's help" do
+    io = IO::Memory.new
+    Root.dispatch(["middle", "leaf", "--help"], stdout: io)
+    text = io.to_s
+    text.should contain("Usage: leaf")
+    text.should_not contain("Usage: root")
+    text.should_not contain("Usage: middle")
+  end
+
+  it "root --help still prints the root's help" do
+    io = IO::Memory.new
+    SubParent.dispatch(["--help"], stdout: io)
+    text = io.to_s
+    text.should contain("Usage: parent")
+  end
+
+  it "unknown first token + --help still prints the root's help" do
+    io = IO::Memory.new
+    SubParent.dispatch(["bogus", "--help"], stdout: io)
+    text = io.to_s
+    text.should contain("Usage: parent")
+  end
+
+  it "subcommand --help with extra args ignores them" do
+    io = IO::Memory.new
+    SubParent.dispatch(["child", "--help", "--value", "x"], stdout: io)
+    text = io.to_s
+    text.should contain("Usage: child")
+  end
+end

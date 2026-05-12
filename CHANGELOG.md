@@ -6,6 +6,10 @@ All notable changes are documented here.
 
 Initial release.
 
+### Fixed
+
+- `<subcommand> --help` now prints the subcommand's help instead of the root command's. Sub-subcommands work the same way: `<parent> <child> --help` routes through to the leaf command's help text.
+
 ### Added
 
 - **Macro DSL**: `command`, `flag`, `positional`, `positionals`, `subcommand`, `shell_completion_flag` macros.
