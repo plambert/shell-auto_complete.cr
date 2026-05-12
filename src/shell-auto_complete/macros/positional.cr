@@ -55,9 +55,9 @@ module Shell::AutoComplete
 
         consumed_keys = [:transform_with, :validate_with, :complete_with, :hidden]
         forwarded_pairs = [] of String
-        opts.each do |k, v|
-          next if consumed_keys.includes?(k)
-          forwarded_pairs << "#{k}: #{v}"
+        opts.each do |key, value|
+          next if consumed_keys.includes?(key)
+          forwarded_pairs << "#{key}: #{value}"
         end
       %}
 
@@ -72,10 +72,10 @@ module Shell::AutoComplete
         validate_with: {{ opts[:validate_with] }},
         complete_with: {{ opts[:complete_with] }},
         hidden: {% if opts[:hidden] == nil %}false{% else %}{{ opts[:hidden] }}{% end %},
-        required: {% if decl.type.is_a?(Union) && decl.type.types.any? { |t| t.resolve == Nil } %}false{% else %}true{% end %},
+        required: {% if decl.type.is_a?(Union) && decl.type.types.any? { |type_node| type_node.resolve == Nil } %}false{% else %}true{% end %},
         forwarded_opts: {% if forwarded_pairs.empty? %}NamedTuple.new{% else %}{ {{ forwarded_pairs.join(", ").id }} }{% end %},
       )]
-      {% if decl.type.is_a?(Union) && decl.type.types.any? { |t| t.resolve == Nil } %}
+      {% if decl.type.is_a?(Union) && decl.type.types.any? { |type_node| type_node.resolve == Nil } %}
         property {{ decl }}
       {% else %}
         property! {{ decl }}

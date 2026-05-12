@@ -6,7 +6,7 @@ describe "Shell::AutoComplete::Types::PositiveInt" do
   end
 
   it "accepts positive values" do
-    Shell::AutoComplete::Types::PositiveInt.__arg_validate(5).should eq(true)
+    Shell::AutoComplete::Types::PositiveInt.__arg_validate(5).should be_true
   end
 
   it "rejects zero and negative" do
@@ -17,7 +17,7 @@ end
 
 describe "Shell::AutoComplete::Types::NonNegativeInt" do
   it "accepts zero" do
-    Shell::AutoComplete::Types::NonNegativeInt.__arg_validate(0).should eq(true)
+    Shell::AutoComplete::Types::NonNegativeInt.__arg_validate(0).should be_true
   end
 
   it "rejects negative" do
@@ -29,7 +29,7 @@ describe "Shell::AutoComplete::Types::Percentage" do
   it "transforms and validates 50.0" do
     v = Shell::AutoComplete::Types::Percentage.__arg_transform("50.0")
     v.should eq(50.0)
-    Shell::AutoComplete::Types::Percentage.__arg_validate(v).should eq(true)
+    Shell::AutoComplete::Types::Percentage.__arg_validate(v).should be_true
   end
 
   it "rejects above 100" do
@@ -62,9 +62,9 @@ end
 describe "Shell::AutoComplete::Types::EnvVar" do
   it "accepts valid env var names" do
     Shell::AutoComplete::Types::EnvVar.__arg_transform("PATH").should eq("PATH")
-    Shell::AutoComplete::Types::EnvVar.__arg_validate("PATH").should eq(true)
-    Shell::AutoComplete::Types::EnvVar.__arg_validate("_FOO").should eq(true)
-    Shell::AutoComplete::Types::EnvVar.__arg_validate("a1b2").should eq(true)
+    Shell::AutoComplete::Types::EnvVar.__arg_validate("PATH").should be_true
+    Shell::AutoComplete::Types::EnvVar.__arg_validate("_FOO").should be_true
+    Shell::AutoComplete::Types::EnvVar.__arg_validate("a1b2").should be_true
   end
 
   it "rejects names with hyphens" do

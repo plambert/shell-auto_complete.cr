@@ -4,7 +4,7 @@ private def compile_fragment(body : String) : Process::Status
   src = <<-CR
     require "./src/shell-auto_complete"
     #{body}
-  CR
+    CR
   tmp = File.tempfile("sac-subcmd", ".cr", dir: "#{__DIR__}/../..")
   begin
     File.write(tmp.path, src)
@@ -27,7 +27,7 @@ describe "subcommand compile guards" do
         subcommand BadLeaf
         positional foo : String, "the foo"
       end
-    FRAGMENT
+      FRAGMENT
     status.success?.should be_false
   end
 end

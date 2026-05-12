@@ -3,16 +3,16 @@ module Shell::AutoComplete::Completion
     def self.render(klass) : String
       cmd = klass.command_name
       fn = "_#{cmd.gsub(/[^A-Za-z0-9_]/, "_")}"
-      script = String.build do |s|
-        s << fn << "() {\n"
-        s << "  local -a candidates\n"
-        s << "  local IFS=$'\\n'\n"
-        s << "  candidates=( $(" << cmd << ' '
-        s << %q{"__complete" "$CURRENT" "${words[@]}" 2>/dev/null}
-        s << ") )\n"
-        s << "  compadd -- $candidates\n"
-        s << "}\n"
-        s << "compdef " << fn << ' ' << cmd << '\n'
+      script = String.build do |io|
+        io << fn << "() {\n"
+        io << "  local -a candidates\n"
+        io << "  local IFS=$'\\n'\n"
+        io << "  candidates=( $(" << cmd << ' '
+        io << %q("__complete" "$CURRENT" "${words[@]}" 2>/dev/null)
+        io << ") )\n"
+        io << "  compadd -- $candidates\n"
+        io << "}\n"
+        io << "compdef " << fn << ' ' << cmd << '\n'
       end
       script
     end

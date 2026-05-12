@@ -6,18 +6,18 @@ require "../spec_helper"
 private def run_rescue_example(argv : Array(String)) : NamedTuple(stdout: String, stderr: String, status: Process::Status)
   project_root = "#{__DIR__}/../.."
   src = <<-'CR'
-  require "./src/shell-auto_complete"
+    require "./src/shell-auto_complete"
 
-  Shell::AutoComplete.command RescueExample, name: "rescuex", description: "rescue test" do
-    flag count : Int32 = 1, "--count", "c", range: 1..10
+    Shell::AutoComplete.command RescueExample, name: "rescuex", description: "rescue test" do
+      flag count : Int32 = 1, "--count", "c", range: 1..10
 
-    def run
-      STDOUT.puts "count=#{count}"
+      def run
+        STDOUT.puts "count=#{count}"
+      end
     end
-  end
 
-  RescueExample.dispatch(ARGV)
-  CR
+    RescueExample.dispatch(ARGV)
+    CR
   src_file = File.tempfile("sac-rescue-src", ".cr", dir: project_root)
   bin_file = File.tempfile("sac-rescue-bin", dir: project_root)
   begin

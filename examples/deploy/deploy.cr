@@ -1,7 +1,7 @@
 require "../../src/shell-auto_complete"
 
 Shell::AutoComplete.command DeployCli, name: "deploy",
-                            description: "Deploy an application" do
+  description: "Deploy an application" do
   flag name : String = "", "--name", "-n",
     "Deployment name (lowercase kebab-case, 1-40 chars)",
     validate_with: :validate_name
@@ -68,7 +68,7 @@ Shell::AutoComplete.command DeployCli, name: "deploy",
       else          n
       end
     elsif value =~ /\A\d+\z/
-      value.to_i  # bare number = seconds
+      value.to_i # bare number = seconds
     else
       raise ArgumentError.new("invalid duration: #{value} (use Ns, Nm, Nh, Nd)")
     end

@@ -76,7 +76,7 @@ describe "--all-help" do
       Shell::AutoComplete.command BadAllHelp, name: "x", description: "x" do
         flag foo : String?, "--all-help", "x"
       end
-    CR
+      CR
     tmp = File.tempfile("sac-allhelp-reserved", ".cr",
       dir: File.expand_path("#{__DIR__}/../.."))
     begin

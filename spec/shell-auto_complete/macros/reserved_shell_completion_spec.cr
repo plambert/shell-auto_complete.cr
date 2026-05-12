@@ -4,7 +4,7 @@ private def compile_fragment(body : String) : Process::Status
   src = <<-CR
     require "./src/shell-auto_complete"
     #{body}
-  CR
+    CR
   project_root = File.expand_path("#{__DIR__}/../../..")
   tmp = File.tempfile("sac-rscompletion", ".cr", dir: project_root)
   begin
@@ -23,7 +23,7 @@ describe "configurable reserved shell-completion flag" do
       Shell::AutoComplete.command BadDefault, name: "x", description: "x" do
         flag x : String?, "--shell-completion", "x"
       end
-    FRAGMENT
+      FRAGMENT
     status.success?.should be_false
   end
 
@@ -33,7 +33,7 @@ describe "configurable reserved shell-completion flag" do
         shell_completion_flag "--gen-completion"
         flag x : String?, "--gen-completion", "x"
       end
-    FRAGMENT
+      FRAGMENT
     status.success?.should be_false
   end
 
@@ -43,7 +43,7 @@ describe "configurable reserved shell-completion flag" do
         shell_completion_flag "--gen-completion"
         flag x : String?, "--shell-completion", "x"
       end
-    FRAGMENT
+      FRAGMENT
     status.success?.should be_true
   end
 end

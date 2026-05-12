@@ -4,7 +4,7 @@ private def compile_fragment(body : String) : Process::Status
   src = <<-CR
     require "./src/shell-auto_complete"
     #{body}
-  CR
+    CR
   tmp = File.tempfile("sac-positionals", ".cr", dir: "#{__DIR__}/../..")
   begin
     File.write(tmp.path, src)
@@ -23,7 +23,7 @@ describe "positionals compile guards" do
         positionals a : Array(String), "a"
         positionals b : Array(String), "b"
       end
-    FRAGMENT
+      FRAGMENT
     status.success?.should be_false
   end
 end

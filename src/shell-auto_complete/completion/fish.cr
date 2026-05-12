@@ -3,15 +3,15 @@ module Shell::AutoComplete::Completion
     def self.render(klass) : String
       cmd = klass.command_name
       fn = "__sac_#{cmd.gsub(/[^A-Za-z0-9_]/, "_")}_complete"
-      script = String.build do |s|
-        s << "function " << fn << '\n'
-        s << "  set -l tokens (commandline -opc)\n"
-        s << "  set -l current (commandline -ct)\n"
-        s << "  " << cmd << ' '
-        s << %q{__complete (count $tokens) $tokens $current 2>/dev/null}
-        s << '\n'
-        s << "end\n"
-        s << "complete -c " << cmd << " -f -a \"(" << fn << ")\"\n"
+      script = String.build do |io|
+        io << "function " << fn << '\n'
+        io << "  set -l tokens (commandline -opc)\n"
+        io << "  set -l current (commandline -ct)\n"
+        io << "  " << cmd << ' '
+        io << %q(__complete (count $tokens) $tokens $current 2>/dev/null)
+        io << '\n'
+        io << "end\n"
+        io << "complete -c " << cmd << " -f -a \"(" << fn << ")\"\n"
       end
       script
     end

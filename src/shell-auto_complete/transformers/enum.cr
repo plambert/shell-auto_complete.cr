@@ -9,13 +9,13 @@ struct Enum
     else
       result = parse(parts[0].strip.tr("-", "_"))
       parts[1..].each do |part|
-        result = self.new(result.value | parse(part.strip.tr("-", "_")).value)
+        result = new(result.value | parse(part.strip.tr("-", "_")).value)
       end
       result
     end
   end
 
   def self.__arg_complete(prefix : String, **opts) : Array(String)
-    names.map { |n| n.to_s.underscore.tr("_", "-") }
+    names.map(&.to_s.underscore.tr("_", "-"))
   end
 end

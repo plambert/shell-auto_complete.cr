@@ -546,10 +546,7 @@ module Shell::AutoComplete
         if rescue_errors
           begin
             return dispatch(argv, stdout: stdout, stderr: stderr, rescue_errors: false)
-          rescue ex : ::Shell::AutoComplete::ParseError
-            stderr.puts "Error: #{ex.message}"
-            Process.exit(1)
-          rescue ex : ::ArgumentError
+          rescue ex : ::Shell::AutoComplete::ParseError | ::ArgumentError
             stderr.puts "Error: #{ex.message}"
             Process.exit(1)
           end

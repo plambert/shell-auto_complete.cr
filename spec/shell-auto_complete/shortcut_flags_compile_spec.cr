@@ -4,7 +4,7 @@ private def compile_fragment(body : String) : Process::Status
   src = <<-CR
     require "./src/shell-auto_complete"
     #{body}
-  CR
+    CR
   tmp = File.tempfile("sac-sfflags", ".cr", dir: "#{__DIR__}/../..")
   begin
     File.write(tmp.path, src)
@@ -27,7 +27,7 @@ describe "shortcut_flags compile guard" do
       Shell::AutoComplete.command BadShortcut, name: "x", description: "x" do
         flag perms : BadEnum = BadEnum::None, "--perms", "p", shortcut_flags: true
       end
-    FRAGMENT
+      FRAGMENT
     status.success?.should be_false
   end
 
@@ -40,7 +40,7 @@ describe "shortcut_flags compile guard" do
       Shell::AutoComplete.command GoodShortcut, name: "x", description: "x" do
         flag choice : GoodEnum = GoodEnum::Alpha, "--choice", shortcut_flags: true
       end
-    FRAGMENT
+      FRAGMENT
     status.success?.should be_true
   end
 end

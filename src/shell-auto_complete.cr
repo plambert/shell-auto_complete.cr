@@ -1,5 +1,5 @@
 module Shell::AutoComplete
-  VERSION = "0.1.0"
+  VERSION = "0.9.0"
 end
 
 require "./shell-auto_complete/candidate"

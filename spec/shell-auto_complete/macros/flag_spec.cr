@@ -5,7 +5,7 @@ Shell::AutoComplete.command Cli1, name: "cli1", description: "test" do
 end
 
 Shell::AutoComplete.command Cli2, name: "cli2", description: "test" do
-  flag tag : String?, %w(--tag --label -t), "a tag"
+  flag tag : String?, %w[--tag --label -t], "a tag"
 end
 
 describe "flag macro (basic)" do
