@@ -49,7 +49,7 @@ module Shell::AutoComplete
         else
           completion_reserved = "--shell-completion"
         end
-        reserved = ["--help", "-h", completion_reserved]
+        reserved = ["--help", "-h", "--all-help", completion_reserved]
         long_forms.each do |long_form|
           raw = long_form.id.stringify
           raise "#{raw} is a reserved flag name" if reserved.includes?(raw)

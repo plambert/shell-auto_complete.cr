@@ -395,6 +395,19 @@ module Shell::AutoComplete
         )
       end
 
+      def self.all_help(prefix : String = command_name) : String
+        String.build do |io|
+          io << "==== " << prefix << " ====\n"
+          io << help
+          io << '\n' unless help.ends_with?('\n')
+          SUBCOMMANDS.each do |sub|
+            sub_name = sub[0]
+            sub_klass = sub[1]
+            io << '\n' << sub_klass.all_help("#{prefix} #{sub_name}")
+          end
+        end
+      end
+
       def self.shell_completion_flag_name : String
         "--shell-completion"
       end
@@ -539,6 +552,11 @@ module Shell::AutoComplete
         # Subcommand routing first — let the matched subcommand handle its own --help
         if !argv.empty? && (match = SUBCOMMANDS.find { |(name, _)| name == argv[0] })
           return match[1].dispatch(argv[1..], stdout: stdout, stderr: stderr)
+        end
+        # --all-help intercept: only fires when this command has subcommands
+        if argv.includes?("--all-help") && !SUBCOMMANDS.empty?
+          stdout.puts all_help
+          return nil
         end
         # --help / -h intercept at THIS level (no subcommand matched)
         if argv.includes?("--help") || argv.includes?("-h")
