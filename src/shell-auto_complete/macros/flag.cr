@@ -100,6 +100,7 @@ module Shell::AutoComplete
         delimiter: {% if opts.keys.map(&.stringify).includes?("delimiter") %}{{ opts[:delimiter] }}{% else %}","{% end %},
         forwarded_opts: {% if forwarded_pairs.empty? %}NamedTuple.new{% else %}{ {{ forwarded_pairs.join(", ").id }} }{% end %},
         transformer_type: {% if storage_remapped %}{{ decl_inner }}{% else %}nil{% end %},
+        complete_with: {{ opts[:complete_with] }},
       )]
       {% if storage_remapped %}
         {% if decl_nullable %}

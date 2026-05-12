@@ -182,7 +182,11 @@ module Shell::AutoComplete
               if vs = result[:values][\{{fann[:canonical]}}]?
                 if raw_last = vs.last?
                   if v = raw_last
-                    \{% if tw = fann[:transform_with] %}
+                    \{% per_flag_transform_method = "__arg_transform_" + ivar.name.stringify %}
+                    \{% has_per_flag_transform = @type.class.methods.any? { |m| m.name.stringify == per_flag_transform_method } %}
+                    \{% if has_per_flag_transform %}
+                      transformed_value = self.\{{per_flag_transform_method.id}}(v)
+                    \{% elsif tw = fann[:transform_with] %}
                       transformed_value = self.\{{tw.id}}(v)
                     \{% elsif fann[:transformer_type] %}
                       transformed_value = \{{fann[:transformer_type]}}.__arg_transform(v, **\{{fann[:forwarded_opts]}})
@@ -192,7 +196,11 @@ module Shell::AutoComplete
                     \{% end %}
                     inst.\{{ivar.name}} = transformed_value
                     \{% inner_type_v = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
-                    \{% if vw = fann[:validate_with] %}
+                    \{% per_flag_validate_method = "__arg_validate_" + ivar.name.stringify %}
+                    \{% has_per_flag_validate = @type.class.methods.any? { |m| m.name.stringify == per_flag_validate_method } %}
+                    \{% if has_per_flag_validate %}
+                      result_v = self.\{{per_flag_validate_method.id}}(transformed_value)
+                    \{% elsif vw = fann[:validate_with] %}
                       result_v = self.\{{vw.id}}(transformed_value)
                     \{% elsif inner_type_v.resolve.class.methods.any? { |m| m.name.stringify == "__arg_validate" } %}
                       result_v = \{{inner_type_v}}.__arg_validate(transformed_value, **\{{fann[:forwarded_opts]}})
@@ -429,6 +437,44 @@ module Shell::AutoComplete
                     end
                   \{% end %}
                 end
+                return result
+              end
+            \{% end %}
+          \{% end %}
+        \{% end %}
+
+        # complete_with: and per-flag __arg_complete_<name> dispatch.
+        \{% for ivar in @type.instance_vars %}
+          \{% if fann = ivar.annotation(::Shell::AutoComplete::FlagDef) %}
+            \{% per_flag_complete_method = "__arg_complete_" + ivar.name.stringify %}
+            \{% has_per_flag_complete = @type.class.methods.any? { |m| m.name.stringify == per_flag_complete_method } %}
+            \{% cw = fann[:complete_with] %}
+            \{% if cw || has_per_flag_complete %}
+              flag_matched_\{{ivar.name}} = false
+              if prev == \{{fann[:canonical]}}
+                flag_matched_\{{ivar.name}} = true
+              end
+              \{% for alias_name in fann[:aliases] %}
+                if prev == \{{alias_name}}
+                  flag_matched_\{{ivar.name}} = true
+                end
+              \{% end %}
+              \{% if fann[:short] %}
+                if prev == \{{fann[:short]}}
+                  flag_matched_\{{ivar.name}} = true
+                end
+              \{% end %}
+              if flag_matched_\{{ivar.name}}
+                ctx_\{{ivar.name}} = ::Shell::AutoComplete::CompletionContext.new(
+                  words: words,
+                  cword: cword,
+                )
+                \{% if has_per_flag_complete %}
+                  sub_candidates_\{{ivar.name}} = self.\{{per_flag_complete_method.id}}(ctx_\{{ivar.name}})
+                \{% elsif cw %}
+                  sub_candidates_\{{ivar.name}} = self.\{{cw.id}}(ctx_\{{ivar.name}})
+                \{% end %}
+                sub_candidates_\{{ivar.name}}.each { |candidate| result << candidate }
                 return result
               end
             \{% end %}
