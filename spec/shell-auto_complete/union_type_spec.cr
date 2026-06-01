@@ -10,7 +10,7 @@ private def compile_fragment(body : String) : Process::Status
   tmp = File.tempfile("sac-union", ".cr", dir: project_root)
   begin
     File.write(tmp.path, src)
-    Process.run("crystal", ["build", "--no-codegen", tmp.path],
+    Process.run("crystal", ["build", "--no-debug", "--no-codegen", tmp.path],
       output: Process::Redirect::Close,
       error: Process::Redirect::Close)
   ensure

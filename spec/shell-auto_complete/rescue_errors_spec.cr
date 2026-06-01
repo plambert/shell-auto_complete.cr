@@ -24,7 +24,7 @@ private def run_rescue_example(argv : Array(String)) : NamedTuple(stdout: String
     File.write(src_file.path, src)
     build = Process.run(
       "crystal",
-      ["build", src_file.path, "-o", bin_file.path],
+      ["build", src_file.path, "--no-debug", "-o", bin_file.path],
       output: Process::Redirect::Close,
       error: Process::Redirect::Close,
     )
@@ -86,7 +86,7 @@ describe "dispatch rescue prints full path for nested commands" do
       File.write(src_file.path, src)
       build = Process.run(
         "crystal",
-        ["build", src_file.path, "-o", bin_file.path],
+        ["build", src_file.path, "--no-debug", "-o", bin_file.path],
         output: Process::Redirect::Close,
         error: Process::Redirect::Close,
       )
