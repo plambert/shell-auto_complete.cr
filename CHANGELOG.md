@@ -2,6 +2,19 @@
 
 All notable changes are documented here.
 
+## [1.0.0] - 2026-06-02
+
+First stable release. The macro DSL, parser, help, and shell-completion APIs are now considered stable; no breaking changes from the 0.9.x line.
+
+### Changed
+
+- Minimum Crystal version lowered from `1.20.1` to `1.3.2`. The full spec suite (206 examples) passes on every Crystal release from 1.3.2 through 1.20.2; 1.2.2 and earlier fail to compile the macro DSL. A version-matrix harness (`spec/Dockerfile`, `spec/run-crystal-versions.sh`) sweeps Crystal releases newest-to-oldest to determine the floor.
+
+### Fixed
+
+- `Shell::AutoComplete::VERSION` now displays its resolved value (e.g. `"1.0.0"`) in the generated API docs instead of the raw `shards version` macro expression.
+- Test suite no longer fails on Linux: a spec that compiled and executed a helper binary held the binary's file descriptor open across `exec`, which Linux rejects with `ETXTBSY` (macOS tolerates it).
+
 ## [0.9.2] - 2026-05-12
 
 ### Fixed
