@@ -1,6 +1,7 @@
 module Shell::AutoComplete
-  # Read the shard version at compile time so it always matches shard.yml.
-  VERSION = {{ `shards version #{__DIR__}/..`.stringify.chomp }}
+  {% begin %}
+    VERSION = {{ `shards version #{__DIR__}/..`.stringify.chomp }}
+  {% end %}
 end
 
 require "./shell-auto_complete/candidate"
