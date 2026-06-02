@@ -20,6 +20,9 @@ private def run_rescue_example(argv : Array(String)) : NamedTuple(stdout: String
     CR
   src_file = File.tempfile("sac-rescue-src", ".cr", dir: project_root)
   bin_file = File.tempfile("sac-rescue-bin", dir: project_root)
+  # Close the binary's fd before `crystal build` writes it: on Linux, exec'ing a
+  # path that still has an open writable fd raises ETXTBSY (macOS is lenient).
+  bin_file.close
   begin
     File.write(src_file.path, src)
     build = Process.run(
@@ -82,6 +85,8 @@ describe "dispatch rescue prints full path for nested commands" do
       CR
     src_file = File.tempfile("sac-nested-err-src", ".cr", dir: project_root)
     bin_file = File.tempfile("sac-nested-err-bin", dir: project_root)
+    # See note above: close the fd so Linux can exec the compiled binary.
+    bin_file.close
     begin
       File.write(src_file.path, src)
       build = Process.run(
