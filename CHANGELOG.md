@@ -2,6 +2,12 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Changed
+
+- Internal: unified command-path construction. The `parent_prefix ? "#{parent_prefix} #{command_name}" : command_name` idiom — previously duplicated in `dispatch`, `help`, and `all_help` — is now a single `self.qualified_name(parent_prefix)` method. The error path (`ParseError#command_path`) no longer rebuilds the path bottom-up by prepending each level's bare name on unwind; instead the level that first raises seeds the already-fully-qualified `qualified_name` and outer levels leave it via `||=`. No observable behavior change; the help and error output are byte-identical.
+
 ## [1.0.2] - 2026-06-05
 
 ### Fixed
