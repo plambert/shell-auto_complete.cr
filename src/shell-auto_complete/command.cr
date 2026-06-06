@@ -34,6 +34,13 @@ module Shell::AutoComplete
         {% end %}
       end
 
+      def self.subcommand_named(name : String) : ::Shell::AutoComplete::Command.class | Nil
+        SUBCOMMANDS.each do |(sub_name, sub_klass)|
+          return sub_klass if sub_name == name
+        end
+        nil
+      end
+
       def self.flag_info(ivar_name : String) : ::Shell::AutoComplete::Command::FlagInfo
         \{% for ivar in @type.instance_vars %}
           \{% if fann = ivar.annotation(::Shell::AutoComplete::FlagDef) %}

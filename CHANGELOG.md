@@ -2,6 +2,12 @@
 
 All notable changes are documented here.
 
+## [1.0.1] - 2026-06-05
+
+### Fixed
+
+- Shell completion now descends into subcommands. Previously `__complete` always ran against the root command, so `mycmd subcmd <TAB>` and `mycmd subcmd --<TAB>` produced no candidates. `Completion::Dispatcher.handle` now walks the words, shifting off each token that names a subcommand of the current target (decrementing `cword` as it goes) before computing candidates against the final target. Nested subcommand chains and flag-prefix filtering inside subcommands complete correctly. A new `self.subcommand_named` class method on every command performs the lookup.
+
 ## [1.0.0] - 2026-06-02
 
 First stable release. The macro DSL, parser, help, and shell-completion APIs are now considered stable; no breaking changes from the 0.9.x line.
