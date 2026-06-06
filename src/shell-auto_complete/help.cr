@@ -11,12 +11,13 @@ module Shell::AutoComplete
                     positionals : Array(PositionalRow) = [] of PositionalRow,
                     header : String? = nil,
                     footer : String? = nil,
-                    usage : String? = nil) : String
+                    usage : String? = nil,
+                    qualified_name : String? = nil) : String
       String.build do |str|
         if header
           str << header << "\n\n"
         end
-        str << "Usage: " << (usage || default_usage(command_name, flags, subcommands, positionals)) << "\n"
+        str << "Usage: " << (usage || default_usage(qualified_name || command_name, flags, subcommands, positionals)) << "\n"
         str << "\n"
         str << description << "\n"
         unless flags.empty?

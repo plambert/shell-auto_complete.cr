@@ -380,7 +380,7 @@ module Shell::AutoComplete
         inst
       end
 
-      def self.help : String
+      def self.help(parent_prefix : String? = nil) : String
         flags = [] of ::Shell::AutoComplete::Help::FlagRow
         \{% for ivar in @type.instance_vars %}
           \{% if fann = ivar.annotation(::Shell::AutoComplete::FlagDef) %}
@@ -417,27 +417,30 @@ module Shell::AutoComplete
           \{% end %}
         \{% end %}
         {% cmd_ann = @type.annotation(::Shell::AutoComplete::CommandDef) %}
+        qualified_name = parent_prefix ? "#{parent_prefix} #{command_name}" : command_name
         ::Shell::AutoComplete::Help.render(
-          command_name: command_name,
-          description:  {{ cmd_ann && cmd_ann[:description] ? cmd_ann[:description] : "" }}.as(String),
-          flags:        flags,
-          subcommands:  subcommands,
-          positionals:  positionals,
-          header:       {{ cmd_ann && cmd_ann[:header] ? cmd_ann[:header] : nil }}.as(String?),
-          footer:       {{ cmd_ann && cmd_ann[:footer] ? cmd_ann[:footer] : nil }}.as(String?),
-          usage:        {{ cmd_ann && cmd_ann[:usage] ? cmd_ann[:usage] : nil }}.as(String?),
+          command_name:   command_name,
+          description:    {{ cmd_ann && cmd_ann[:description] ? cmd_ann[:description] : "" }}.as(String),
+          flags:          flags,
+          subcommands:    subcommands,
+          positionals:    positionals,
+          header:         {{ cmd_ann && cmd_ann[:header] ? cmd_ann[:header] : nil }}.as(String?),
+          footer:         {{ cmd_ann && cmd_ann[:footer] ? cmd_ann[:footer] : nil }}.as(String?),
+          usage:          {{ cmd_ann && cmd_ann[:usage] ? cmd_ann[:usage] : nil }}.as(String?),
+          qualified_name: qualified_name,
         )
       end
 
-      def self.all_help(prefix : String = command_name) : String
+      def self.all_help(parent_prefix : String? = nil) : String
+        qualified_name = parent_prefix ? "#{parent_prefix} #{command_name}" : command_name
         String.build do |io|
-          io << "==== " << prefix << " ====\n"
-          io << help
-          io << '\n' unless help.ends_with?('\n')
+          io << "==== " << qualified_name << " ====\n"
+          rendered = help(parent_prefix)
+          io << rendered
+          io << '\n' unless rendered.ends_with?('\n')
           SUBCOMMANDS.each do |sub|
-            sub_name = sub[0]
             sub_klass = sub[1]
-            io << '\n' << sub_klass.all_help("#{prefix} #{sub_name}")
+            io << '\n' << sub_klass.all_help(qualified_name)
           end
         end
       end
@@ -576,15 +579,17 @@ module Shell::AutoComplete
         result
       end
 
-      def self.dispatch(argv : Array(String), stdout : IO = STDOUT, stderr : IO = STDERR, rescue_errors : Bool = true) : ::Shell::AutoComplete::Command?
+      def self.dispatch(argv : Array(String), stdout : IO = STDOUT, stderr : IO = STDERR, rescue_errors : Bool = true, parent_prefix : String? = nil) : ::Shell::AutoComplete::Command?
         if rescue_errors
           begin
-            return dispatch(argv, stdout: stdout, stderr: stderr, rescue_errors: false)
+            return dispatch(argv, stdout: stdout, stderr: stderr, rescue_errors: false, parent_prefix: parent_prefix)
           rescue ex : ::Shell::AutoComplete::ParseError
             stderr.puts "#{ex.command_path || command_name}: #{ex.message}"
             Process.exit(1)
           end
         end
+
+        qualified_name = parent_prefix ? "#{parent_prefix} #{command_name}" : command_name
 
         begin
           if ::Shell::AutoComplete::Completion::Dispatcher.handle(self, argv, stdout)
@@ -595,21 +600,21 @@ module Shell::AutoComplete
           end
           # Subcommand routing first — let the matched subcommand handle its own --help
           if !argv.empty? && (match = SUBCOMMANDS.find { |(name, _)| name == argv[0] })
-            return match[1].dispatch(argv[1..], stdout: stdout, stderr: stderr, rescue_errors: false)
+            return match[1].dispatch(argv[1..], stdout: stdout, stderr: stderr, rescue_errors: false, parent_prefix: qualified_name)
           end
           # If we have subcommands but no argv, show help instead of trying to run.
           if !SUBCOMMANDS.empty? && argv.empty?
-            stdout.puts help
+            stdout.puts help(parent_prefix)
             return
           end
           # --all-help intercept: only fires when this command has subcommands
           if argv.includes?("--all-help") && !SUBCOMMANDS.empty?
-            stdout.puts all_help
+            stdout.puts all_help(parent_prefix)
             return
           end
           # --help / -h intercept at THIS level (no subcommand matched)
           if argv.includes?("--help") || argv.includes?("-h")
-            stdout.puts help
+            stdout.puts help(parent_prefix)
             return
           end
           # Unknown subcommand rejection
