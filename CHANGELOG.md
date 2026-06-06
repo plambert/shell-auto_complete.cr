@@ -2,6 +2,12 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Fixed
+
+- Subcommand `--help` now renders a fully qualified `Usage:` line. Previously `mycli sub --help` showed `Usage: sub [options]` — the subcommand's bare name with no parent context. The qualified path is now threaded through `dispatch` → `help` → `Help.render` → `default_usage`: `dispatch` carries a `parent_prefix`, building the qualified name at each level and passing it to the matched child, so `mycli sub --help` shows `Usage: mycli sub [options]` and `mycli sub nested --help` shows `Usage: mycli sub nested [options]`. Explicit `usage:` overrides keep precedence. `all_help` now uses the same `parent_prefix` mechanism instead of a parallel `prefix` walk.
+
 ## [1.0.1] - 2026-06-05
 
 ### Fixed

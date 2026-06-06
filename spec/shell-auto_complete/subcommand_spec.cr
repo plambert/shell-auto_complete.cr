@@ -89,29 +89,30 @@ describe "empty argv on subcommand parent" do
 end
 
 describe "subcommand --help routing" do
-  it "subcommand --help prints the subcommand's help, not the root's" do
+  it "subcommand --help prints the subcommand's help qualified with the parent, not the root's" do
     io = IO::Memory.new
     SubParent.dispatch(["child", "--help"], stdout: io)
     text = io.to_s
-    text.should contain("Usage: child")
+    text.should contain("Usage: parent child")
     text.should contain("child command")
-    text.should_not contain("Usage: parent")
+    # The child's own help, not the parent's subcommand listing.
+    text.should_not contain("Subcommands:")
   end
 
   it "subcommand -h does the same" do
     io = IO::Memory.new
     SubParent.dispatch(["child", "-h"], stdout: io)
     text = io.to_s
-    text.should contain("Usage: child")
+    text.should contain("Usage: parent child")
   end
 
-  it "sub-subcommand --help prints the leaf's help" do
+  it "sub-subcommand --help prints the leaf's help qualified through the chain" do
     io = IO::Memory.new
     Root.dispatch(["middle", "leaf", "--help"], stdout: io)
     text = io.to_s
-    text.should contain("Usage: leaf")
-    text.should_not contain("Usage: root")
-    text.should_not contain("Usage: middle")
+    text.should contain("Usage: root middle leaf")
+    # The leaf's own help, not an intermediate's subcommand listing.
+    text.should_not contain("Subcommands:")
   end
 
   it "root --help still prints the root's help" do
@@ -132,6 +133,6 @@ describe "subcommand --help routing" do
     io = IO::Memory.new
     SubParent.dispatch(["child", "--help", "--value", "x"], stdout: io)
     text = io.to_s
-    text.should contain("Usage: child")
+    text.should contain("Usage: parent child")
   end
 end

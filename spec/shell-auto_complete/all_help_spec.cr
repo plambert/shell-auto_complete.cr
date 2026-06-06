@@ -41,8 +41,8 @@ describe "--all-help" do
     text.should contain("==== parent child ====")
     text.should contain("==== parent other ====")
     text.should contain("Usage: parent")
-    text.should contain("Usage: child")
-    text.should contain("Usage: other")
+    text.should contain("Usage: parent child")
+    text.should contain("Usage: parent other")
     text.should contain("child's value flag")
   end
 
@@ -55,12 +55,13 @@ describe "--all-help" do
     text.should contain("==== root middle leaf ====")
   end
 
-  it "works at an intermediate level" do
+  it "works at an intermediate level, qualified from the dispatched root" do
     io = IO::Memory.new
     AllHelpRoot.dispatch(["middle", "--all-help"], stdout: io)
     text = io.to_s
-    text.should contain("==== middle ====")
-    text.should contain("==== middle leaf ====")
+    text.should contain("==== root middle ====")
+    text.should contain("==== root middle leaf ====")
+    # Root's own section is not printed — --all-help fired at the middle level.
     text.should_not contain("==== root ====")
   end
 
