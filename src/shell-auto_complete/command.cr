@@ -25,6 +25,13 @@ module Shell::AutoComplete
         {% end %}
       end
 
+      # Builds this command's fully qualified path. With no `parent_prefix`
+      # the command is the root, so its bare `command_name` is the whole path;
+      # otherwise the parent's path is prepended (e.g. `"hf scrape"`).
+      def self.qualified_name(parent_prefix : String? = nil) : String
+        parent_prefix ? "#{parent_prefix} #{command_name}" : command_name
+      end
+
       def self.command_description : String
         {% ann = @type.annotation(::Shell::AutoComplete::CommandDef) %}
         {% if ann && ann[:description] %}
@@ -417,7 +424,6 @@ module Shell::AutoComplete
           \{% end %}
         \{% end %}
         {% cmd_ann = @type.annotation(::Shell::AutoComplete::CommandDef) %}
-        qualified_name = parent_prefix ? "#{parent_prefix} #{command_name}" : command_name
         ::Shell::AutoComplete::Help.render(
           command_name:   command_name,
           description:    {{ cmd_ann && cmd_ann[:description] ? cmd_ann[:description] : "" }}.as(String),
@@ -427,20 +433,20 @@ module Shell::AutoComplete
           header:         {{ cmd_ann && cmd_ann[:header] ? cmd_ann[:header] : nil }}.as(String?),
           footer:         {{ cmd_ann && cmd_ann[:footer] ? cmd_ann[:footer] : nil }}.as(String?),
           usage:          {{ cmd_ann && cmd_ann[:usage] ? cmd_ann[:usage] : nil }}.as(String?),
-          qualified_name: qualified_name,
+          qualified_name: qualified_name(parent_prefix),
         )
       end
 
       def self.all_help(parent_prefix : String? = nil) : String
-        qualified_name = parent_prefix ? "#{parent_prefix} #{command_name}" : command_name
+        qualified = qualified_name(parent_prefix)
         String.build do |io|
-          io << "==== " << qualified_name << " ====\n"
+          io << "==== " << qualified << " ====\n"
           rendered = help(parent_prefix)
           io << rendered
           io << '\n' unless rendered.ends_with?('\n')
           SUBCOMMANDS.each do |sub|
             sub_klass = sub[1]
-            io << '\n' << sub_klass.all_help(qualified_name)
+            io << '\n' << sub_klass.all_help(qualified)
           end
         end
       end
@@ -589,7 +595,7 @@ module Shell::AutoComplete
           end
         end
 
-        qualified_name = parent_prefix ? "#{parent_prefix} #{command_name}" : command_name
+        qualified = qualified_name(parent_prefix)
 
         begin
           if ::Shell::AutoComplete::Completion::Dispatcher.handle(self, argv, stdout)
@@ -600,7 +606,7 @@ module Shell::AutoComplete
           end
           # Subcommand routing first — let the matched subcommand handle its own --help
           if !argv.empty? && (match = SUBCOMMANDS.find { |(name, _)| name == argv[0] })
-            return match[1].dispatch(argv[1..], stdout: stdout, stderr: stderr, rescue_errors: false, parent_prefix: qualified_name)
+            return match[1].dispatch(argv[1..], stdout: stdout, stderr: stderr, rescue_errors: false, parent_prefix: qualified)
           end
           # If we have subcommands but no argv, show help instead of trying to run.
           if !SUBCOMMANDS.empty? && argv.empty?
@@ -625,11 +631,14 @@ module Shell::AutoComplete
           inst.run
           inst
         rescue ex : ::Shell::AutoComplete::ParseError
-          ex.command_path = ex.command_path ? "#{command_name} #{ex.command_path}" : command_name
+          # `qualified` is already the full path from the root (parent_prefix was
+          # threaded down), so the level that first raises seeds the whole path;
+          # outer levels leave an already-set path untouched.
+          ex.command_path ||= qualified
           raise ex
         rescue ex : ::ArgumentError
           new_err = ::Shell::AutoComplete::ParseError.new(ex.message || "argument error")
-          new_err.command_path = command_name
+          new_err.command_path = qualified
           raise new_err
         end
       end
