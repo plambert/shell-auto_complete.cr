@@ -74,6 +74,8 @@ mybuild --shell-completion fish > ~/.config/fish/completions/mybuild.fish
 
 Completion is smart: it calls back into your binary for any dynamic candidates, applies alias filtering (`--dryrun` is shown when `--dry` is typed; `--dry-run` is shown when `--dry-` is typed), and supports `@[Flags]` enum completion with trailing-comma awareness.
 
+Positionals complete too. A positional with `complete_with:` calls back into your binary for candidates, and path-typed positionals (`Path`, `File`, `Dir`) delegate to the shell's native filesystem completion — so `mybuild src/<TAB>` expands real paths with `~`-expansion, trailing slashes, and coloring intact.
+
 ## Features
 
 - **One source of truth**: `command`, `flag`, `positional`, `positionals`, `subcommand` macros generate parser + help + completion.

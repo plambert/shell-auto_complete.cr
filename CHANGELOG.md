@@ -2,6 +2,16 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Added
+
+- Positional arguments now get tab completion. `completion_candidates` resolves the cursor to a positional slot (walking past flags and the values they consume, honoring `--` and `--flag=value`) and dispatches to that positional's `complete_with:` method or its type's `__arg_complete`. Path-typed positionals (`Path`, `File`, `Dir`) complete against the filesystem: rather than enumerate entries in Crystal, `__complete` emits a directive sentinel (`__sac_complete_files__` / `__sac_complete_dirs__`) and the generated bash/zsh/fish wrappers turn it into the shell's own native completion (`compgen -f`/`-d` + `compopt -o filenames`, `_files`/`_files -/`, `__fish_complete_path`/`__fish_complete_directories`) — preserving `~` expansion, trailing slashes, and coloring. (#4)
+
+### Notes
+
+- Scalar/variadic `File` and `Dir` positionals still don't compile (their property is typed `File`/`Dir` while `__arg_transform` returns `Path`; the flag macro remaps this storage but the positional macro does not). Their `__arg_complete` directives are in place for when that separate limitation is addressed; `Path` positionals work today.
+
 ## [1.0.3] - 2026-06-05
 
 ### Changed
