@@ -299,6 +299,8 @@ module Shell::AutoComplete
               \{% pann = ivar.annotation(::Shell::AutoComplete::PositionalDef) %}
               \{% if tw = pann[:transform_with] %}
                 transformed_pos_\{{ivar.name}} = self.\{{tw.id}}(raw_pos_\{{ivar.name}})
+              \{% elsif tt = pann[:transformer_type] %}
+                transformed_pos_\{{ivar.name}} = \{{tt}}.__arg_transform(raw_pos_\{{ivar.name}})
               \{% else %}
                 \{% pos_inner_type = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
                 transformed_pos_\{{ivar.name}} = \{{pos_inner_type}}.__arg_transform(raw_pos_\{{ivar.name}})
@@ -307,7 +309,7 @@ module Shell::AutoComplete
               \{% if vw = pann[:validate_with] %}
                 result_v_pos_\{{ivar.name}} = self.\{{vw.id}}(transformed_pos_\{{ivar.name}})
               \{% else %}
-                \{% pos_inner_type_v = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
+                \{% pos_inner_type_v = pann[:transformer_type] || (ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type) %}
                 \{% if pos_inner_type_v.resolve.class.methods.any? { |m| m.name.stringify == "__arg_validate" } %}
                   result_v_pos_\{{ivar.name}} = \{{pos_inner_type_v}}.__arg_validate(transformed_pos_\{{ivar.name}}, **\{{pann[:forwarded_opts]}})
                 \{% else %}
@@ -326,11 +328,12 @@ module Shell::AutoComplete
           \{% end %}
           # Shift variadic
           \{% if variadic_ivar %}
-            \{% var_inner_type = variadic_ivar.type.type_vars[0] %}
-            variadic_collected_\{{variadic_ivar.name}} = [] of \{{var_inner_type}}
+            \{% var_storage_type = variadic_ivar.type.type_vars[0] %}
+            \{% var_transform_type = variadic_ann[:transformer_type] || var_storage_type %}
+            variadic_collected_\{{variadic_ivar.name}} = [] of \{{var_storage_type}}
             while positional_stack.size > \{{trailing_ivars.size}}
               raw_var_tok = positional_stack.shift
-              variadic_collected_\{{variadic_ivar.name}} << \{{var_inner_type}}.__arg_transform(raw_var_tok)
+              variadic_collected_\{{variadic_ivar.name}} << \{{var_transform_type}}.__arg_transform(raw_var_tok)
             end
             \{% var_actual_min = variadic_ann[:min] %}
             if variadic_collected_\{{variadic_ivar.name}}.size < \{{var_actual_min}}
@@ -357,6 +360,8 @@ module Shell::AutoComplete
               \{% pann = ivar.annotation(::Shell::AutoComplete::PositionalDef) %}
               \{% if tw = pann[:transform_with] %}
                 transformed_pos_\{{ivar.name}} = self.\{{tw.id}}(raw_pos_\{{ivar.name}})
+              \{% elsif tt = pann[:transformer_type] %}
+                transformed_pos_\{{ivar.name}} = \{{tt}}.__arg_transform(raw_pos_\{{ivar.name}})
               \{% else %}
                 \{% pos_inner_type = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
                 transformed_pos_\{{ivar.name}} = \{{pos_inner_type}}.__arg_transform(raw_pos_\{{ivar.name}})
@@ -365,7 +370,7 @@ module Shell::AutoComplete
               \{% if vw = pann[:validate_with] %}
                 result_v_pos_\{{ivar.name}} = self.\{{vw.id}}(transformed_pos_\{{ivar.name}})
               \{% else %}
-                \{% pos_inner_type_v = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
+                \{% pos_inner_type_v = pann[:transformer_type] || (ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type) %}
                 \{% if pos_inner_type_v.resolve.class.methods.any? { |m| m.name.stringify == "__arg_validate" } %}
                   result_v_pos_\{{ivar.name}} = \{{pos_inner_type_v}}.__arg_validate(transformed_pos_\{{ivar.name}}, **\{{pann[:forwarded_opts]}})
                 \{% else %}
@@ -588,7 +593,7 @@ module Shell::AutoComplete
                 \{% for i in 0...p_leading.size %}
                   \{% pivar = p_leading[i] %}
                   \{% pann = pivar.annotation(::Shell::AutoComplete::PositionalDef) %}
-                  \{% p_inner = pivar.type.union? ? pivar.type.union_types.reject { |t| t == Nil }[0] : pivar.type %}
+                  \{% p_inner = pann[:transformer_type] || (pivar.type.union? ? pivar.type.union_types.reject { |t| t == Nil }[0] : pivar.type) %}
                   if pos_slot == \{{i}}
                     \{% if cw = pann[:complete_with] %}
                       pos_ctx = ::Shell::AutoComplete::CompletionContext.new(words: words, cword: cword)
@@ -603,7 +608,9 @@ module Shell::AutoComplete
                 \{% if p_variadic %}
                   \{% vann = p_variadic.annotation(::Shell::AutoComplete::PositionalsDef) %}
                   \{% v_str = p_variadic.type.stringify %}
-                  \{% if v_str.starts_with?("Hash(") %}
+                  \{% if vann[:transformer_type] %}
+                    \{% v_inner = vann[:transformer_type] %}
+                  \{% elsif v_str.starts_with?("Hash(") %}
                     \{% v_inner = p_variadic.type.type_vars[1] %}
                   \{% else %}
                     \{% v_inner = p_variadic.type.type_vars[0] %}

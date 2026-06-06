@@ -21,6 +21,34 @@ module Shell::AutoComplete
           next if consumed_keys.includes?(opt_key)
           forwarded_pairs << "#{opt_key}: #{opt_val}"
         end
+
+        # Resolve the element storage type: if the declared element type's
+        # __arg_transform returns a different base type (e.g. File/Dir -> Path),
+        # store the collection over that return type and record the declared
+        # element type so the parser/completer dispatch through it. Mirrors the
+        # scalar positional / flag macros.
+        container_base = type_str.split("(")[0]
+        if container_base == "Hash"
+          pos_key_type = decl_type.type_vars[0]
+          pos_elem_type = decl_type.type_vars[1]
+        else
+          pos_key_type = nil
+          pos_elem_type = decl_type.type_vars[0]
+        end
+        storage_elem = pos_elem_type
+        if pos_elem_type.resolve.class.methods.any? { |meth| meth.name.stringify == "__arg_transform" }
+          pos_elem_type.resolve.class.methods.each do |meth|
+            storage_elem = meth.return_type if meth.name.stringify == "__arg_transform"
+          end
+        end
+        elem_base = pos_elem_type.id.stringify.split("(")[0]
+        storage_elem_base = storage_elem.id.stringify.split("(")[0]
+        elem_remapped = elem_base != storage_elem_base
+        if container_base == "Hash"
+          storage_collection = "Hash(" + pos_key_type.stringify + ", " + storage_elem.stringify + ")"
+        else
+          storage_collection = container_base + "(" + storage_elem.stringify + ")"
+        end
       %}
 
       # Guard: at most one positionals per command (detected via sentinel method)
@@ -39,9 +67,10 @@ module Shell::AutoComplete
         validate_with: {{ opts[:validate_with] }},
         complete_with: {{ opts[:complete_with] }},
         hidden: {% if opts[:hidden] == nil %}false{% else %}{{ opts[:hidden] }}{% end %},
+        transformer_type: {% if elem_remapped %}{{ pos_elem_type }}{% else %}nil{% end %},
         forwarded_opts: {% if forwarded_pairs.empty? %}NamedTuple.new{% else %}{ {{ forwarded_pairs.join(", ").id }} }{% end %},
       )]
-      property {{ decl }} = {{ decl.type }}.new
+      property {{ decl.var }} : {{ storage_collection.id }} = {{ storage_collection.id }}.new
     end
 
     macro positional(decl, *strings, **opts)
@@ -59,6 +88,22 @@ module Shell::AutoComplete
           next if consumed_keys.includes?(key)
           forwarded_pairs << "#{key}: #{value}"
         end
+
+        # Resolve the storage type: if the declared type's __arg_transform returns
+        # a different base type (e.g. File/Dir -> Path), store the property as that
+        # return type and record the declared type so the parser/completer still
+        # dispatch through it. Mirrors the flag macro.
+        decl_nullable = decl.type.is_a?(Union)
+        decl_inner = decl_nullable ? decl.type.types.reject { |type_node| type_node.resolve == Nil }[0] : decl.type
+        storage_inner = decl_inner
+        if decl_inner.resolve.class.methods.any? { |meth| meth.name.stringify == "__arg_transform" }
+          decl_inner.resolve.class.methods.each do |meth|
+            storage_inner = meth.return_type if meth.name.stringify == "__arg_transform"
+          end
+        end
+        decl_base = decl_inner.id.stringify.split("(")[0]
+        storage_base = storage_inner.id.stringify.split("(")[0]
+        storage_remapped = decl_base != storage_base
       %}
 
       # Guard: positional cannot coexist with subcommands
@@ -72,13 +117,14 @@ module Shell::AutoComplete
         validate_with: {{ opts[:validate_with] }},
         complete_with: {{ opts[:complete_with] }},
         hidden: {% if opts[:hidden] == nil %}false{% else %}{{ opts[:hidden] }}{% end %},
-        required: {% if decl.type.is_a?(Union) && decl.type.types.any? { |type_node| type_node.resolve == Nil } %}false{% else %}true{% end %},
+        required: {% if decl_nullable %}false{% else %}true{% end %},
+        transformer_type: {% if storage_remapped %}{{ decl_inner }}{% else %}nil{% end %},
         forwarded_opts: {% if forwarded_pairs.empty? %}NamedTuple.new{% else %}{ {{ forwarded_pairs.join(", ").id }} }{% end %},
       )]
-      {% if decl.type.is_a?(Union) && decl.type.types.any? { |type_node| type_node.resolve == Nil } %}
-        property {{ decl }}
+      {% if decl_nullable %}
+        property {{ decl.var }} : {{ storage_inner }}?
       {% else %}
-        property! {{ decl }}
+        property! {{ decl.var }} : {{ storage_inner }}
       {% end %}
     end
   end
