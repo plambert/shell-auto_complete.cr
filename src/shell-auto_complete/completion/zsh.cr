@@ -10,6 +10,12 @@ module Shell::AutoComplete::Completion
         io << "  candidates=( $(" << cmd << ' '
         io << %q("__complete" "$CURRENT" "${words[@]}" 2>/dev/null)
         io << ") )\n"
+        io << "  if (( ${#candidates} == 1 )); then\n"
+        io << "    case \"$candidates[1]\" in\n"
+        io << "      " << Directive::FILES << ") _files; return ;;\n"
+        io << "      " << Directive::DIRS << ") _files -/; return ;;\n"
+        io << "    esac\n"
+        io << "  fi\n"
         io << "  compadd -- $candidates\n"
         io << "}\n"
         io << "compdef " << fn << ' ' << cmd << '\n'

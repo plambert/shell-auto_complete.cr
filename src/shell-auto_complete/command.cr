@@ -549,6 +549,81 @@ module Shell::AutoComplete
           \{% end %}
         \{% end %}
 
+        # Positional-argument completion. Only engaged when the cursor is not on a
+        # flag (`current` not starting with "-"); the slot the cursor maps to is
+        # resolved through the flags it follows, then dispatched to that
+        # positional's `complete_with:` method or its type's `__arg_complete`
+        # (path types emit a native-completion directive). If the slot has no
+        # completer, control falls through to flag-name completion below.
+        \{% begin %}
+          \{%
+            p_leading = [] of MetaVar
+            p_variadic = nil
+            @type.instance_vars.each do |pv|
+              if pv.annotation(::Shell::AutoComplete::PositionalDef)
+                p_leading << pv unless p_variadic
+              elsif pv.annotation(::Shell::AutoComplete::PositionalsDef)
+                p_variadic = pv
+              end
+            end
+          %}
+          \{% if !p_leading.empty? || p_variadic %}
+            unless current.starts_with?("-")
+              pos_value_flags = Set(String).new
+              \{% for ivar in @type.instance_vars %}
+                \{% if fann = ivar.annotation(::Shell::AutoComplete::FlagDef) %}
+                  \{% if ivar.type.id.stringify != "Bool" %}
+                    pos_value_flags << \{{fann[:canonical]}}
+                    \{% for alias_name in fann[:aliases] %}
+                      pos_value_flags << \{{alias_name}}
+                    \{% end %}
+                    \{% if fann[:short] %}
+                      pos_value_flags << \{{fann[:short]}}
+                    \{% end %}
+                  \{% end %}
+                \{% end %}
+              \{% end %}
+              pos_slot = ::Shell::AutoComplete::Completion::Positional.index_at(words, cword, pos_value_flags)
+              if pos_slot
+                \{% for i in 0...p_leading.size %}
+                  \{% pivar = p_leading[i] %}
+                  \{% pann = pivar.annotation(::Shell::AutoComplete::PositionalDef) %}
+                  \{% p_inner = pivar.type.union? ? pivar.type.union_types.reject { |t| t == Nil }[0] : pivar.type %}
+                  if pos_slot == \{{i}}
+                    \{% if cw = pann[:complete_with] %}
+                      pos_ctx = ::Shell::AutoComplete::CompletionContext.new(words: words, cword: cword)
+                      self.\{{cw.id}}(pos_ctx).each { |candidate| result << candidate }
+                      return result
+                    \{% elsif p_inner.resolve.class.methods.any? { |m| m.name.stringify == "__arg_complete" } %}
+                      \{{p_inner}}.__arg_complete(current).each { |candidate| result << candidate }
+                      return result
+                    \{% end %}
+                  end
+                \{% end %}
+                \{% if p_variadic %}
+                  \{% vann = p_variadic.annotation(::Shell::AutoComplete::PositionalsDef) %}
+                  \{% v_str = p_variadic.type.stringify %}
+                  \{% if v_str.starts_with?("Hash(") %}
+                    \{% v_inner = p_variadic.type.type_vars[1] %}
+                  \{% else %}
+                    \{% v_inner = p_variadic.type.type_vars[0] %}
+                  \{% end %}
+                  if pos_slot >= \{{p_leading.size}}
+                    \{% if cw = vann[:complete_with] %}
+                      var_ctx = ::Shell::AutoComplete::CompletionContext.new(words: words, cword: cword)
+                      self.\{{cw.id}}(var_ctx).each { |candidate| result << candidate }
+                      return result
+                    \{% elsif v_inner.resolve.class.methods.any? { |m| m.name.stringify == "__arg_complete" } %}
+                      \{{v_inner}}.__arg_complete(current).each { |candidate| result << candidate }
+                      return result
+                    \{% end %}
+                  end
+                \{% end %}
+              end
+            end
+          \{% end %}
+        \{% end %}
+
         # Flag-name completion when current starts with "-" or is empty.
         if current.starts_with?("-") || current.empty?
           \{% for ivar in @type.instance_vars %}
