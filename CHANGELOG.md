@@ -2,6 +2,12 @@
 
 All notable changes are documented here.
 
+## [1.1.1] - 2026-06-08
+
+### Fixed
+
+- Generated bash completion no longer tears filenames with spaces (or glob metacharacters) into multiple candidates. The wrapper built `COMPREPLY=( $(compgen -f -- "$cur") )`, whose unquoted command substitution word-splits each result on `$IFS` and then glob-expands it — so completing `my file.torrent` offered `my`, `file.torrent`. It now reads one candidate per line (`while IFS= read -r line; do COMPREPLY+=( "$line" ); done < <(compgen ...)`), preserving spaces and metacharacters verbatim. The plain `-W` candidate path is split on newlines only for the same reason. bash 3.2+ compatible. zsh (`_files`) and fish (`__fish_complete_path`) were already correct.
+
 ## [1.1.0] - 2026-06-06
 
 ### Added
