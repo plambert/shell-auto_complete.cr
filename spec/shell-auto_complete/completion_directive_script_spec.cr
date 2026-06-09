@@ -20,6 +20,14 @@ describe "generated completion scripts delegate path directives" do
     script.should contain("compopt -o filenames")
   end
 
+  it "bash reads candidates line by line so spaces/globs survive" do
+    script = DirectiveScriptCli.completion_script(:bash)
+    # The space-safe idiom: read one candidate per line into COMPREPLY rather
+    # than `COMPREPLY=( $(compgen ...) )`, which word-splits and globs results.
+    script.should contain("while IFS= read -r line")
+    script.should_not contain("COMPREPLY=( $(compgen")
+  end
+
   it "zsh delegates to _files / _files -/" do
     script = DirectiveScriptCli.completion_script(:zsh)
     script.should contain(FILES)
