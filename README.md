@@ -76,6 +76,26 @@ Completion is smart: it calls back into your binary for any dynamic candidates, 
 
 Positionals complete too. A positional with `complete_with:` calls back into your binary for candidates, and path-typed positionals (`Path`, `File`, `Dir`) delegate to the shell's native filesystem completion — so `mybuild src/<TAB>` expands real paths with `~`-expansion, trailing slashes, and coloring intact.
 
+## Set-delta positionals
+
+A variadic positional typed `Shell::AutoComplete::Types::SetDelta` accepts `+name`, `-name`, and bare `name` tokens and binds them into a `Hash(String, Bool)` — useful for toggling a set of things on and off in one invocation. `SetDelta.apply` applies that delta to an existing `Set(String)`:
+
+```crystal
+Shell::AutoComplete.command Features, name: "features", description: "Toggle features" do
+  positionals changes : Shell::AutoComplete::Types::SetDelta, "+name to enable, -name to disable"
+  def run
+    enabled = load_enabled # Set(String)
+    Shell::AutoComplete::Types::SetDelta.apply(enabled, changes)
+  end
+end
+```
+
+```sh
+features +dark-mode -telemetry beta   # changes => {"dark-mode" => true, "telemetry" => false, "beta" => true}
+```
+
+`+name` maps to `true`, `-name` to `false`, and a bare `name` to `true`; the last token wins for a repeated key, and `min:`/`max:` bound the number of distinct keys. The single-dash `-name` form is accepted as a positional rather than an unknown flag, while real flags (and `--`) keep working as usual.
+
 ## Features
 
 - **One source of truth**: `command`, `flag`, `positional`, `positionals`, `subcommand` macros generate parser + help + completion.
