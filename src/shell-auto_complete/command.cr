@@ -118,7 +118,7 @@ module Shell::AutoComplete
             \{% end %}
           \{% end %}
         \{% end %}
-        result = ::Shell::AutoComplete::Parser.parse_argv(argv, specs)
+        result = ::Shell::AutoComplete::Parser.parse_argv(argv, specs, dash_positionals: \{{ @type.instance_vars.any? { |iv| iv.annotation(::Shell::AutoComplete::PositionalsDef) && iv.annotation(::Shell::AutoComplete::PositionalsDef)[:set_delta] } }})
         inst = new
         \{% for ivar in @type.instance_vars %}
           \{% if fann = ivar.annotation(::Shell::AutoComplete::FlagDef) %}
@@ -328,13 +328,23 @@ module Shell::AutoComplete
           \{% end %}
           # Shift variadic
           \{% if variadic_ivar %}
-            \{% var_storage_type = variadic_ivar.type.type_vars[0] %}
-            \{% var_transform_type = variadic_ann[:transformer_type] || var_storage_type %}
-            variadic_collected_\{{variadic_ivar.name}} = [] of \{{var_storage_type}}
-            while positional_stack.size > \{{trailing_ivars.size}}
-              raw_var_tok = positional_stack.shift
-              variadic_collected_\{{variadic_ivar.name}} << \{{var_transform_type}}.__arg_transform(raw_var_tok)
-            end
+            \{% if variadic_ann[:set_delta] %}
+              # SetDelta: merge each `+name`/`-name`/`name` token's single-entry
+              # delta into one Hash(String, Bool); last write wins on a repeat.
+              variadic_collected_\{{variadic_ivar.name}} = Hash(String, Bool).new
+              while positional_stack.size > \{{trailing_ivars.size}}
+                raw_var_tok = positional_stack.shift
+                variadic_collected_\{{variadic_ivar.name}}.merge!(::Shell::AutoComplete::Types::SetDelta.__arg_transform(raw_var_tok))
+              end
+            \{% else %}
+              \{% var_storage_type = variadic_ivar.type.type_vars[0] %}
+              \{% var_transform_type = variadic_ann[:transformer_type] || var_storage_type %}
+              variadic_collected_\{{variadic_ivar.name}} = [] of \{{var_storage_type}}
+              while positional_stack.size > \{{trailing_ivars.size}}
+                raw_var_tok = positional_stack.shift
+                variadic_collected_\{{variadic_ivar.name}} << \{{var_transform_type}}.__arg_transform(raw_var_tok)
+              end
+            \{% end %}
             \{% var_actual_min = variadic_ann[:min] %}
             if variadic_collected_\{{variadic_ivar.name}}.size < \{{var_actual_min}}
               raise ::Shell::AutoComplete::ParseError.new(

@@ -4,8 +4,17 @@ module Shell::AutoComplete
       {%
         decl_type = decl.type
         type_str = decl_type.stringify
-        unless type_str.starts_with?("Array(") || type_str.starts_with?("Set(") || type_str.starts_with?("Hash(")
-          raise "positionals type must be Array(T), Set(T), or Hash(String, T), got #{type_str}"
+
+        # SetDelta is a special variadic type: its tokens (`+name` / `-name` /
+        # `name`) are merged into a single Hash(String, Bool) rather than
+        # collected element-by-element.
+        set_delta = decl_type.resolve.stringify == "Shell::AutoComplete::Types::SetDelta"
+
+        unless set_delta || type_str.starts_with?("Array(") || type_str.starts_with?("Set(")
+          if type_str.starts_with?("Hash(")
+            raise "Hash positionals are not supported; use Shell::AutoComplete::Types::SetDelta for +name/-name deltas, or Array(T)/Set(T)"
+          end
+          raise "positionals type must be Array(T), Set(T), or Shell::AutoComplete::Types::SetDelta, got #{type_str}"
         end
 
         description = nil
@@ -22,31 +31,28 @@ module Shell::AutoComplete
           forwarded_pairs << "#{opt_key}: #{opt_val}"
         end
 
-        # Resolve the element storage type: if the declared element type's
-        # __arg_transform returns a different base type (e.g. File/Dir -> Path),
-        # store the collection over that return type and record the declared
-        # element type so the parser/completer dispatch through it. Mirrors the
-        # scalar positional / flag macros.
-        container_base = type_str.split("(")[0]
-        if container_base == "Hash"
-          pos_key_type = decl_type.type_vars[0]
-          pos_elem_type = decl_type.type_vars[1]
+        if set_delta
+          # The bound value is the merged delta.
+          storage_collection = "Hash(String, Bool)"
+          elem_remapped = false
+          pos_elem_type = nil
         else
-          pos_key_type = nil
+          # Resolve the element storage type: if the declared element type's
+          # __arg_transform returns a different base type (e.g. File/Dir -> Path),
+          # store the collection over that return type and record the declared
+          # element type so the parser/completer dispatch through it. Mirrors the
+          # scalar positional / flag macros.
+          container_base = type_str.split("(")[0]
           pos_elem_type = decl_type.type_vars[0]
-        end
-        storage_elem = pos_elem_type
-        if pos_elem_type.resolve.class.methods.any? { |meth| meth.name.stringify == "__arg_transform" }
-          pos_elem_type.resolve.class.methods.each do |meth|
-            storage_elem = meth.return_type if meth.name.stringify == "__arg_transform"
+          storage_elem = pos_elem_type
+          if pos_elem_type.resolve.class.methods.any? { |meth| meth.name.stringify == "__arg_transform" }
+            pos_elem_type.resolve.class.methods.each do |meth|
+              storage_elem = meth.return_type if meth.name.stringify == "__arg_transform"
+            end
           end
-        end
-        elem_base = pos_elem_type.id.stringify.split("(")[0]
-        storage_elem_base = storage_elem.id.stringify.split("(")[0]
-        elem_remapped = elem_base != storage_elem_base
-        if container_base == "Hash"
-          storage_collection = "Hash(" + pos_key_type.stringify + ", " + storage_elem.stringify + ")"
-        else
+          elem_base = pos_elem_type.id.stringify.split("(")[0]
+          storage_elem_base = storage_elem.id.stringify.split("(")[0]
+          elem_remapped = elem_base != storage_elem_base
           storage_collection = container_base + "(" + storage_elem.stringify + ")"
         end
       %}
@@ -68,6 +74,7 @@ module Shell::AutoComplete
         complete_with: {{ opts[:complete_with] }},
         hidden: {% if opts[:hidden] == nil %}false{% else %}{{ opts[:hidden] }}{% end %},
         transformer_type: {% if elem_remapped %}{{ pos_elem_type }}{% else %}nil{% end %},
+        set_delta: {{ set_delta }},
         forwarded_opts: {% if forwarded_pairs.empty? %}NamedTuple.new{% else %}{ {{ forwarded_pairs.join(", ").id }} }{% end %},
       )]
       property {{ decl.var }} : {{ storage_collection.id }} = {{ storage_collection.id }}.new

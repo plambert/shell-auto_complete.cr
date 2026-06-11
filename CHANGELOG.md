@@ -2,6 +2,12 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Added
+
+- `Shell::AutoComplete::Types::SetDelta` — a variadic positional type for set deltas. A positional typed `SetDelta` accepts `+name` (→ `true`), `-name` (→ `false`), and bare `name` (→ `true`) tokens and binds them into a `Hash(String, Bool)` (last write wins on a repeated key); `SetDelta.apply(set, delta)` applies the delta to a `Set(String)`. The parser gains a `dash_positionals` mode so a single-dash token that matches no flag spec (e.g. `-foo`) is treated as a positional instead of raising "unknown flag"; double-dash tokens and known flags are unaffected, so `--help`/`-v`/typo detection still work and known flags take precedence. `min:`/`max:` bound the number of distinct keys. Hash positionals are now rejected at compile time with a message pointing at `SetDelta` (the generic Hash positional path never worked).
+
 ## [1.1.1] - 2026-06-08
 
 ### Fixed
