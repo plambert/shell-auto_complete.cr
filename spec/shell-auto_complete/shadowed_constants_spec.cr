@@ -11,8 +11,8 @@ module ShadowedConstants
 
   Shell::AutoComplete.command ShadowCli, name: "shadow", description: "lives in a shadowing namespace" do
     flag level : ::Log::Severity?, "--level", "Log level"
-    flag levels : Array(::Log::Severity) = [] of ::Log::Severity, "--levels", "Several log levels"
-    flag tags : Set(::Log::Severity) = Set(::Log::Severity).new, "--tags", "Severity set"
+    flag levels : Array(::Log::Severity) = [] of ::Log::Severity, "--levels", "Several log levels", delimiter: ","
+    flag tags : Set(::Log::Severity) = Set(::Log::Severity).new, "--tags", "Severity set", delimiter: ","
     flag overrides : Hash(String, ::Log::Severity) = {} of String => ::Log::Severity, "--override", "Per-source severity"
     # File's __arg_transform returns Path, so the property is storage-remapped
     # to the (shadowed) Path type.

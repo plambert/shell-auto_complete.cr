@@ -1,11 +1,11 @@
 require "../spec_helper"
 
 Shell::AutoComplete.command SetCli, name: "se", description: "x" do
-  flag tags : Set(String) = Set(String).new, "--tag", "t"
+  flag tags : Set(String) = Set(String).new, "--tag", "t", delimiter: ","
 end
 
 Shell::AutoComplete.command SetOpsCli, name: "so", description: "x" do
-  flag levels : Set(String) = Set(String).new, "--level", "l", set_operations: true
+  flag levels : Set(String) = Set(String).new, "--level", "l", set_operations: true, delimiter: ","
 end
 
 describe "Set(T) flag" do

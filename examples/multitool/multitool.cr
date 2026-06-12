@@ -155,13 +155,13 @@ Shell::AutoComplete.command MultitoolTransform,
   name: "transform",
   description: "Transform: collection types and enums" do
   flag tags : Array(String) = [] of String, "--tags", "-t",
-    "Comma-separated string tags (Array(String))"
+    "Comma-separated string tags (Array(String))", delimiter: ","
 
   flag ints : Array(Int32) = [] of Int32, "--ints", "-i",
-    "Comma-separated integers (Array(Int32))"
+    "Comma-separated integers (Array(Int32))", delimiter: ","
 
   flag levels : Set(String) = Set(String).new, "--levels", "-l",
-    "Comma-separated level strings (Set(String))"
+    "Comma-separated level strings (Set(String))", delimiter: ","
 
   flag env : Hash(String, String) = {} of String => String, "--env", "-e",
     "KEY=VALUE environment entries (Hash(String, String))"

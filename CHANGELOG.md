@@ -4,6 +4,10 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING**: `delimiter:` is now a required choice on `Array(T)` and `Set(T)` flags — `","` (split each value) or `nil` (each occurrence is one element). Omitting it is a compile error. Previously every collection flag silently split on `,`, which corrupts values whose data legally contains commas (paths, regexes, URLs, titles) — the unsafe choice was the implicit one. `Hash(String, T)` flags are unaffected (no splitting happens there). Migration: add `delimiter: ","` to keep the old behavior. (#17)
+
 ### Added
 
 - `transform_with:`/`validate_with:` and the per-flag `__arg_transform_<name>`/`__arg_validate_<name>` method conventions are now honored per element on `Array(T)`, `Set(T)`, and `Hash(String, T)` flags, with the same dispatch precedence as scalar flags. Element types without a stock transformer (e.g. `Tuple(String, String)` for a `SRC:DST` flag) become declarable, and a malformed item is rejected at parse time with the flag's name in the error (`--map: expected SRC:DST, got "nope"`); `ArgumentError` from a custom transform converts to `ParseError` the same way. Set-operation payloads transform after the `+`/`-` prefix is stripped; deletes skip validation (the value only needs to parse to be compared). (#16)
