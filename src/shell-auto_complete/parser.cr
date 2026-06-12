@@ -13,9 +13,14 @@ module Shell::AutoComplete
     # positionals accept `-name` tokens alongside `+name`. Double-dash tokens
     # (`--name`) are still parsed strictly as flags so typos and `--help` keep
     # working; known flags always take precedence over a dash positional.
-    def self.parse_argv(argv : Array(String), specs : Array(FlagSpec), dash_positionals : Bool = false) : NamedTuple(values: Hash(String, Array(String?)), positional: Array(String))
+    # Every matched flag occurrence is also recorded, in command-line order, as
+    # `{spelling as typed, raw value consumed}` — the spelling keeps its dashes
+    # and is not canonicalized, and the value is `nil` when none was consumed
+    # from argv (switches and forced-value shortcut flags).
+    def self.parse_argv(argv : Array(String), specs : Array(FlagSpec), dash_positionals : Bool = false) : NamedTuple(values: Hash(String, Array(String?)), positional: Array(String), occurrences: Array({String, String?}))
       values = {} of String => Array(String?)
       positional = [] of String
+      occurrences = [] of {String, String?}
       index = 0
       while index < argv.size
         arg = argv[index]
@@ -33,15 +38,19 @@ module Shell::AutoComplete
           if spec.takes_value
             if eq == "="
               values[spec.canonical] << inline_value
+              occurrences << {name, inline_value}
             else
               index += 1
               raise ParseError.new("flag #{name} requires a value") if index >= argv.size
               values[spec.canonical] << argv[index]
+              occurrences << {name, argv[index]}
             end
           elsif fv = spec.forced_value
             values[spec.canonical] << fv
+            occurrences << {name, nil}
           else
             values[spec.canonical] << spec.bool_value.to_s
+            occurrences << {name, nil}
           end
         elsif arg.starts_with?("-") && arg.size == 2
           spec = specs.find(&.names.includes?(arg))
@@ -54,10 +63,13 @@ module Shell::AutoComplete
               index += 1
               raise ParseError.new("flag #{arg} requires a value") if index >= argv.size
               values[spec.canonical] << argv[index]
+              occurrences << {arg, argv[index]}
             elsif fv = spec.forced_value
               values[spec.canonical] << fv
+              occurrences << {arg, nil}
             else
               values[spec.canonical] << spec.bool_value.to_s
+              occurrences << {arg, nil}
             end
           end
         elsif arg.starts_with?("-") && arg.size > 2
@@ -68,7 +80,7 @@ module Shell::AutoComplete
         end
         index += 1
       end
-      {values: values, positional: positional}
+      {values: values, positional: positional, occurrences: occurrences}
     end
   end
 end

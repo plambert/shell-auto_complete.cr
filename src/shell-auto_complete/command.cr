@@ -130,6 +130,7 @@ module Shell::AutoComplete
         \{% end %}
         result = ::Shell::AutoComplete::Parser.parse_argv(argv, specs, dash_positionals: \{{ @type.instance_vars.any? { |iv| iv.annotation(::Shell::AutoComplete::PositionalsDef) && iv.annotation(::Shell::AutoComplete::PositionalsDef)[:set_delta] } }})
         inst = new
+        inst.parsed_occurrences = result[:occurrences]
         \{% for ivar in @type.instance_vars %}
           \{% if (fann = ivar.annotation(::Shell::AutoComplete::FlagDef)) && !@type.constant("OVERRIDDEN_FLAG_IVARS").includes?(ivar.name.stringify) %}
             \{% if ivar.type.id.stringify == "Bool" %}
@@ -761,6 +762,13 @@ module Shell::AutoComplete
         end
       end
     end
+
+    # Raw, ordered log of every flag occurrence matched during parse: the
+    # spelling exactly as typed (dashes kept, aliases not canonicalized) and
+    # the raw value consumed from argv or after `=`, or `nil` when none was
+    # consumed (switches and forced-value shortcut flags). Positionals are not
+    # logged — they preserve their own order. Empty until `parse` runs.
+    property parsed_occurrences : Array({String, String?}) = [] of {String, String?}
 
     def run
       raise NotRunnable.new("#{self.class} must override #run")
