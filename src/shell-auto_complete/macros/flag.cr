@@ -22,20 +22,47 @@ module Shell::AutoComplete
         description = nil
 
         strings.each do |lit|
-          unless lit.is_a?(StringLiteral)
-            raise "flag-string args must be string literals; got #{lit.class_name}"
-          end
-          raw = lit.id.stringify
-          if raw.starts_with?("--")
-            long_forms << lit
-          elsif raw.starts_with?("-") && raw.size == 2
-            raise "more than one short flag given" if short_form
-            short_form = lit
-          else
+          if lit.is_a?(StringLiteral)
+            raw = lit.id.stringify
+            if raw.starts_with?("--")
+              long_forms << lit
+            elsif raw.starts_with?("-") && raw.size == 2
+              raise "more than one short flag given" if short_form
+              short_form = lit
+            else
+              description = lit if description == nil
+            end
+          elsif lit.is_a?(Path)
+            # Constant reference as the description (issue #18). Resolve at
+            # macro-expansion time when the constant is a plain string
+            # literal; otherwise splice the path so it resolves at render
+            # time (covers computed/interpolated constants and constants
+            # defined later).
+            if description == nil
+              resolved_description = lit.resolve?
+              description = resolved_description.is_a?(StringLiteral) ? resolved_description : lit
+            end
+          elsif lit.is_a?(Call) && lit.args.empty? && lit.receiver.is_a?(Nop) && lit.block.is_a?(Nop)
+            # Method reference as the description: resolves at help-render
+            # time against a class method of the command.
             description = lit if description == nil
+          else
+            raise "flag-string args must be string literals, constant references, or method references; got #{lit.class_name}"
           end
         end
 
+        # description: as a named option — same Path/Call/literal handling as
+        # the positional form. A constant directly after the type declaration
+        # does not parse (Crystal reads it as a type), so the named form is
+        # the reliable spelling for constant descriptions.
+        if description == nil && (named_description = opts[:description])
+          if named_description.is_a?(Path)
+            resolved_description = named_description.resolve?
+            description = resolved_description.is_a?(StringLiteral) ? resolved_description : named_description
+          else
+            description = named_description
+          end
+        end
         raise "no long flag given for #{decl}" if long_forms.empty?
         canonical = long_forms[0]
         aliases = long_forms.size > 1 ? long_forms[1..-1] : [] of StringLiteral
@@ -207,7 +234,7 @@ module Shell::AutoComplete
           reg_owners << var_name
         end
 
-        consumed_keys = [:transform_with, :validate_with, :negatable, :complete_with, :hidden, :shortcut_flags, :delimiter, :set_operations, :override]
+        consumed_keys = [:description, :transform_with, :validate_with, :negatable, :complete_with, :hidden, :shortcut_flags, :delimiter, :set_operations, :override]
         forwarded_pairs = [] of StringLiteral
         opts.each do |opt_key, opt_val|
           next if consumed_keys.includes?(opt_key)

@@ -19,12 +19,34 @@ module Shell::AutoComplete
 
         description = nil
         strings.each do |lit|
-          raise "positionals args must be string literals" unless lit.is_a?(StringLiteral)
-          description = lit if description == nil
+          if lit.is_a?(StringLiteral)
+            description = lit if description == nil
+          elsif lit.is_a?(Path)
+            if description == nil
+              resolved_description = lit.resolve?
+              description = resolved_description.is_a?(StringLiteral) ? resolved_description : lit
+            end
+          elsif lit.is_a?(Call) && lit.args.empty? && lit.receiver.is_a?(Nop) && lit.block.is_a?(Nop)
+            description = lit if description == nil
+          else
+            raise "positionals args must be string literals, constant references, or method references; got #{lit.class_name}"
+          end
+        end
+        # description: as a named option — same Path/Call/literal handling as
+        # the positional form. A constant directly after the type declaration
+        # does not parse (Crystal reads it as a type), so the named form is
+        # the reliable spelling for constant descriptions.
+        if description == nil && (named_description = opts[:description])
+          if named_description.is_a?(Path)
+            resolved_description = named_description.resolve?
+            description = resolved_description.is_a?(StringLiteral) ? resolved_description : named_description
+          else
+            description = named_description
+          end
         end
         raise "positionals requires a description" unless description
 
-        consumed_keys = [:min, :max, :transform_with, :validate_with, :complete_with, :hidden]
+        consumed_keys = [:description, :min, :max, :transform_with, :validate_with, :complete_with, :hidden]
         forwarded_pairs = [] of String
         opts.each do |opt_key, opt_val|
           next if consumed_keys.includes?(opt_key)
@@ -94,12 +116,34 @@ module Shell::AutoComplete
       {%
         description = nil
         strings.each do |lit|
-          raise "positional args must be string literals" unless lit.is_a?(StringLiteral)
-          description = lit if description == nil
+          if lit.is_a?(StringLiteral)
+            description = lit if description == nil
+          elsif lit.is_a?(Path)
+            if description == nil
+              resolved_description = lit.resolve?
+              description = resolved_description.is_a?(StringLiteral) ? resolved_description : lit
+            end
+          elsif lit.is_a?(Call) && lit.args.empty? && lit.receiver.is_a?(Nop) && lit.block.is_a?(Nop)
+            description = lit if description == nil
+          else
+            raise "positional args must be string literals, constant references, or method references; got #{lit.class_name}"
+          end
+        end
+        # description: as a named option — same Path/Call/literal handling as
+        # the positional form. A constant directly after the type declaration
+        # does not parse (Crystal reads it as a type), so the named form is
+        # the reliable spelling for constant descriptions.
+        if description == nil && (named_description = opts[:description])
+          if named_description.is_a?(Path)
+            resolved_description = named_description.resolve?
+            description = resolved_description.is_a?(StringLiteral) ? resolved_description : named_description
+          else
+            description = named_description
+          end
         end
         raise "positional requires a description" unless description
 
-        consumed_keys = [:transform_with, :validate_with, :complete_with, :hidden]
+        consumed_keys = [:description, :transform_with, :validate_with, :complete_with, :hidden]
         forwarded_pairs = [] of String
         opts.each do |key, value|
           next if consumed_keys.includes?(key)
