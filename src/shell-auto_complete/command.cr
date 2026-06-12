@@ -205,9 +205,43 @@ module Shell::AutoComplete
             \{% end %}
           \{% end %}
         \{% end %}
+        \{% for meth in @type.methods %}
+          \{% if gann = meth.annotation(::Shell::AutoComplete::OrderedFlagGroupDef) %}
+            \{% for spelling in gann[:spellings] %}
+              specs << ::Shell::AutoComplete::Parser::FlagSpec.new(
+                canonical: \{{spelling}},
+                names: [\{{spelling}}] of ::String,
+                takes_value: true,
+                bool_value: nil,
+              )
+            \{% end %}
+          \{% end %}
+        \{% end %}
         result = ::Shell::AutoComplete::Parser.parse_argv(argv, specs, dash_positionals: \{{ @type.instance_vars.any? { |iv| iv.annotation(::Shell::AutoComplete::PositionalsDef) && iv.annotation(::Shell::AutoComplete::PositionalsDef)[:set_delta] } }})
         inst = new
         inst.parsed_occurrences = result[:occurrences]
+        \{% if @type.methods.any? { |m| m.annotation(::Shell::AutoComplete::OrderedFlagGroupDef) } %}
+          # Ordered flag groups: deliver each member occurrence, in
+          # command-line order, to the group's handler. The block records into
+          # properties; an ArgumentError from it becomes a clean ParseError
+          # carrying the matched spelling.
+          result[:occurrences].each do |occurrence|
+            case occurrence[0]
+            \{% for meth in @type.methods %}
+              \{% if gann = meth.annotation(::Shell::AutoComplete::OrderedFlagGroupDef) %}
+                \{% for spelling in gann[:spellings] %}
+                  when \{{spelling}}
+                    begin
+                      inst.\{{meth.name}}(\{{spelling.id.stringify.gsub(/\A--/, "")}}, occurrence[1] || "")
+                    rescue group_error : ::ArgumentError
+                      raise ::Shell::AutoComplete::ParseError.new(\{{spelling}} + ": " + (group_error.message || "invalid value"))
+                    end
+                \{% end %}
+              \{% end %}
+            \{% end %}
+            end
+          end
+        \{% end %}
         \{% for ivar in @type.instance_vars %}
           \{% if (fann = ivar.annotation(::Shell::AutoComplete::FlagDef)) && !@type.constant("OVERRIDDEN_FLAG_IVARS").includes?(ivar.name.stringify) %}
             \{% is_switch = ivar.type.id.stringify == "Bool" || (ivar.type.union? && ivar.type.union_types.all? { |ut| ut == Nil || ut.id.stringify == "Bool" } && ivar.type.union_types.any? { |ut| ut.id.stringify == "Bool" }) %}
@@ -529,6 +563,18 @@ module Shell::AutoComplete
             \{% end %}
           \{% end %}
         \{% end %}
+        \{% for meth in @type.methods %}
+          \{% if gann = meth.annotation(::Shell::AutoComplete::OrderedFlagGroupDef) %}
+            \{% for member_idx in 0...gann[:spellings].size %}
+              flags << {
+                canonical:   \{{gann[:spellings][member_idx]}}.as(::String),
+                aliases:     ([] of ::String),
+                short:       nil.as(::String?),
+                description: \{{gann[:descriptions][member_idx]}}.as(::String),
+              }
+            \{% end %}
+          \{% end %}
+        \{% end %}
         subcommands = SUBCOMMANDS.map { |(name, klass)| {name: name, description: klass.command_description} }
         positionals = [] of ::Shell::AutoComplete::Help::PositionalRow
         \{% for ivar in @type.instance_vars %}
@@ -711,6 +757,13 @@ module Shell::AutoComplete
                   \{% end %}
                 \{% end %}
               \{% end %}
+              \{% for meth in @type.methods %}
+                \{% if gann = meth.annotation(::Shell::AutoComplete::OrderedFlagGroupDef) %}
+                  \{% for spelling in gann[:spellings] %}
+                    pos_value_flags << \{{spelling}}
+                  \{% end %}
+                \{% end %}
+              \{% end %}
               pos_slot = ::Shell::AutoComplete::Completion::Positional.index_at(words, cword, pos_value_flags)
               if pos_slot
                 \{% for i in 0...p_leading.size %}
@@ -761,6 +814,15 @@ module Shell::AutoComplete
 
         # Flag-name completion when current starts with "-" or is empty.
         if current.starts_with?("-") || current.empty?
+          \{% for meth in @type.methods %}
+            \{% if gann = meth.annotation(::Shell::AutoComplete::OrderedFlagGroupDef) %}
+              \{% for spelling in gann[:spellings] %}
+                if \{{spelling}}.starts_with?(current)
+                  result << \{{spelling}}
+                end
+              \{% end %}
+            \{% end %}
+          \{% end %}
           \{% for ivar in @type.instance_vars %}
             \{% if (fann = ivar.annotation(::Shell::AutoComplete::FlagDef)) && !@type.constant("OVERRIDDEN_FLAG_IVARS").includes?(ivar.name.stringify) %}
               \{% inner_type_flag = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}

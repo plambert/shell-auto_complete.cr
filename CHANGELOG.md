@@ -6,6 +6,8 @@ All notable changes are documented here.
 
 ### Added
 
+- `ordered_flag_group` macro: declares a group of value-taking long options whose occurrences are delivered, in command-line order, to a block — the rsync/tar `--include`/`--exclude` shape, where interleaving between spellings is the semantics. The block runs at parse time on the fresh instance, once per occurrence, with the matched key (dashes stripped) and raw value; an `ArgumentError` raised from it converts to a clean `ParseError` carrying the matched spelling, giving parse-time per-item validation. Members render in help with per-spelling descriptions, complete like any flag, participate in the duplicate-name checker, and appear in `parsed_occurrences`. Value-taking members only in this first version; switch members are deferred. (#15)
+
 - `shortcut_flags:` accepts a configuration named tuple alongside the bare `true`: `only:`/`except:` filter which enum cases get generated switches (mutually exclusive; unknown case names are compile errors), and `aliases:` adds switches that force a specific case (`shortcut_flags: {except: [:none], aliases: {quiet: :warn, verbose: :info}}`). Alias switches feed the same flag's value stream, so `--quiet --debug` resolves last-wins against real shortcuts with no extra machinery; they count toward `flag_given?`, register in the duplicate-name checker, complete, and render in help as `Alias for --log-level warn`. (#14)
 
 - `Bool?` flags now parse as tri-state switches: `--x` → `true`, `--no-x` → `false`, untouched → `nil`. Previously `Bool?` fell into the value-taking branch and demanded an argument. This is the missing primitive for mutation-style CLIs and config-file layering, where a file default applies only to options the user did not set. (#12)
