@@ -98,10 +98,21 @@ module Shell::AutoComplete
                   spellings_\{{ivar.name}} << "--no-" + \{{alias_name}}.gsub(/^--/, "")
                 \{% end %}
               \{% end %}
-              \{% if fann[:shortcut_flags] %}
+              \{% if sc_conf = fann[:shortcut_flags] %}
                 \{% inner_type_fg = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
+                \{% sc_only = sc_conf.is_a?(NamedTupleLiteral) ? sc_conf[:only] : nil %}
+                \{% sc_except = sc_conf.is_a?(NamedTupleLiteral) ? sc_conf[:except] : nil %}
                 \{% for case_const in inner_type_fg.resolve.constants %}
-                  spellings_\{{ivar.name}} << "--" + \{{case_const.stringify.underscore.tr("_", "-")}}
+                  \{% case_under = case_const.stringify.underscore %}
+                  \{% sc_included = sc_only ? sc_only.any? { |case_sym| case_sym.id.stringify == case_under } : (sc_except ? !sc_except.any? { |case_sym| case_sym.id.stringify == case_under } : true) %}
+                  \{% if sc_included %}
+                    spellings_\{{ivar.name}} << "--" + \{{case_under.tr("_", "-")}}
+                  \{% end %}
+                \{% end %}
+                \{% if sc_conf.is_a?(NamedTupleLiteral) && (sc_aliases = sc_conf[:aliases]) %}
+                  \{% for alias_key in sc_aliases.keys %}
+                    spellings_\{{ivar.name}} << "--" + \{{alias_key.stringify.underscore.tr("_", "-")}}
+                  \{% end %}
                 \{% end %}
               \{% end %}
               return parsed_occurrences.any? { |occurrence| spellings_\{{ivar.name}}.includes?(occurrence[0]) }
@@ -156,17 +167,39 @@ module Shell::AutoComplete
                 takes_value: true,
                 bool_value: nil,
               )
-              \{% if fann[:shortcut_flags] %}
+              \{% if sc_conf = fann[:shortcut_flags] %}
                 \{% inner_type_sc = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
+                \{% sc_only = sc_conf.is_a?(NamedTupleLiteral) ? sc_conf[:only] : nil %}
+                \{% sc_except = sc_conf.is_a?(NamedTupleLiteral) ? sc_conf[:except] : nil %}
                 \{% for case_const in inner_type_sc.resolve.constants %}
-                  \{% kebab_name = case_const.stringify.underscore.tr("_", "-") %}
-                  specs << ::Shell::AutoComplete::Parser::FlagSpec.new(
-                    canonical: \{{fann[:canonical]}},
-                    names: ["--" + \{{kebab_name}}],
-                    takes_value: false,
-                    bool_value: nil,
-                    forced_value: \{{kebab_name}},
-                  )
+                  \{% case_under = case_const.stringify.underscore %}
+                  \{% kebab_name = case_under.tr("_", "-") %}
+                  \{% sc_included = sc_only ? sc_only.any? { |case_sym| case_sym.id.stringify == case_under } : (sc_except ? !sc_except.any? { |case_sym| case_sym.id.stringify == case_under } : true) %}
+                  \{% if sc_included %}
+                    specs << ::Shell::AutoComplete::Parser::FlagSpec.new(
+                      canonical: \{{fann[:canonical]}},
+                      names: ["--" + \{{kebab_name}}],
+                      takes_value: false,
+                      bool_value: nil,
+                      forced_value: \{{kebab_name}},
+                    )
+                  \{% end %}
+                \{% end %}
+                # Alias switches are forced-value specs feeding the same flag's
+                # value stream, so last-value-wins ordering resolves them
+                # against real shortcuts with no extra machinery.
+                \{% if sc_conf.is_a?(NamedTupleLiteral) && (sc_aliases = sc_conf[:aliases]) %}
+                  \{% for alias_key in sc_aliases.keys %}
+                    \{% alias_flag = "--" + alias_key.stringify.underscore.tr("_", "-") %}
+                    \{% alias_target = sc_aliases[alias_key].id.stringify.underscore.tr("_", "-") %}
+                    specs << ::Shell::AutoComplete::Parser::FlagSpec.new(
+                      canonical: \{{fann[:canonical]}},
+                      names: [\{{alias_flag}}],
+                      takes_value: false,
+                      bool_value: nil,
+                      forced_value: \{{alias_target}},
+                    )
+                  \{% end %}
                 \{% end %}
               \{% end %}
             \{% end %}
@@ -481,6 +514,18 @@ module Shell::AutoComplete
                 short:       \{{fann[:short]}}.as(::String?),
                 description: \{{fann[:description]}}.as(::String),
               }
+              \{% if (sc_conf = fann[:shortcut_flags]) && sc_conf.is_a?(NamedTupleLiteral) && (sc_aliases = sc_conf[:aliases]) %}
+                \{% for alias_key in sc_aliases.keys %}
+                  \{% alias_flag = "--" + alias_key.stringify.underscore.tr("_", "-") %}
+                  \{% alias_target = sc_aliases[alias_key].id.stringify.underscore.tr("_", "-") %}
+                  flags << {
+                    canonical:   \{{alias_flag}}.as(::String),
+                    aliases:     ([] of ::String),
+                    short:       nil.as(::String?),
+                    description: ("Alias for " + \{{fann[:canonical]}} + " " + \{{alias_target}}).as(::String),
+                  }
+                \{% end %}
+              \{% end %}
             \{% end %}
           \{% end %}
         \{% end %}
@@ -734,6 +779,14 @@ module Shell::AutoComplete
                 if neg_name_\{{ivar.name}}.starts_with?(current)
                   result << neg_name_\{{ivar.name}}
                 end
+              \{% end %}
+              \{% if (sc_conf = fann[:shortcut_flags]) && sc_conf.is_a?(NamedTupleLiteral) && (sc_aliases = sc_conf[:aliases]) %}
+                \{% for alias_key in sc_aliases.keys %}
+                  \{% alias_flag = "--" + alias_key.stringify.underscore.tr("_", "-") %}
+                  if \{{alias_flag}}.starts_with?(current)
+                    result << \{{alias_flag}}
+                  end
+                \{% end %}
               \{% end %}
               # Aliases — only emit when canonical does NOT match the prefix.
               unless canonical_matches_\{{ivar.name}}

@@ -61,9 +61,13 @@ module Shell::AutoComplete
 
         decl_type = decl.type
 
-        # Guard: shortcut_flags: true is not valid for @[Flags] enums (which use
-        # comma-separated values, not per-case boolean shortcuts).
-        if opts[:shortcut_flags]
+        # Guard: shortcut_flags: is not valid for @[Flags] enums (which use
+        # comma-separated values, not per-case boolean shortcuts). The option
+        # is either `true` (every case) or a named-tuple config with `only:`,
+        # `except:` (mutually exclusive case filters) and `aliases:` (extra
+        # switches mapping to a specific case, e.g. {quiet: :warn}).
+        sc_conf = opts[:shortcut_flags]
+        if sc_conf
           if decl_type.is_a?(Union)
             sc_non_nil = decl_type.types.reject { |type_node| type_node.resolve == Nil }
             sc_resolved = sc_non_nil.size == 1 ? sc_non_nil[0].resolve : nil
@@ -71,7 +75,41 @@ module Shell::AutoComplete
             sc_resolved = decl_type.resolve
           end
           if sc_resolved && sc_resolved.annotation(::Flags)
-            raise "shortcut_flags: true is not valid for @[Flags] enums (flag #{decl.var})"
+            raise "shortcut_flags: is not valid for @[Flags] enums (flag #{decl.var})"
+          end
+          unless sc_conf.is_a?(BoolLiteral) || sc_conf.is_a?(NamedTupleLiteral)
+            raise "shortcut_flags: must be true or a named-tuple config ({only:/except:/aliases:}) on flag #{decl.var}"
+          end
+          if sc_conf.is_a?(NamedTupleLiteral)
+            sc_conf.keys.each do |conf_key|
+              unless ["only", "except", "aliases"].includes?(conf_key.stringify)
+                raise "unknown shortcut_flags option #{conf_key} on flag #{decl.var} (expected only:, except:, aliases:)"
+              end
+            end
+            if sc_conf[:only] && sc_conf[:except]
+              raise "shortcut_flags only: and except: are mutually exclusive on flag #{decl.var}"
+            end
+            if sc_resolved
+              sc_valid_cases = sc_resolved.constants.map(&.stringify.underscore)
+              (sc_conf[:only] || [] of SymbolLiteral).each do |case_sym|
+                unless sc_valid_cases.includes?(case_sym.id.stringify)
+                  raise "shortcut_flags only: names unknown enum case #{case_sym} on flag #{decl.var}"
+                end
+              end
+              (sc_conf[:except] || [] of SymbolLiteral).each do |case_sym|
+                unless sc_valid_cases.includes?(case_sym.id.stringify)
+                  raise "shortcut_flags except: names unknown enum case #{case_sym} on flag #{decl.var}"
+                end
+              end
+              if sc_aliases_check = sc_conf[:aliases]
+                sc_aliases_check.keys.each do |alias_key|
+                  target_sym = sc_aliases_check[alias_key]
+                  unless sc_valid_cases.includes?(target_sym.id.stringify)
+                    raise "shortcut_flags alias #{alias_key}: names unknown enum case #{target_sym} on flag #{decl.var}"
+                  end
+                end
+              end
+            end
           end
         end
 
@@ -103,9 +141,18 @@ module Shell::AutoComplete
             produced_names << "--no-" + long_form.id.stringify.gsub(/\A--/, "")
           end
         end
-        if opts[:shortcut_flags] && sc_resolved
+        if sc_conf && sc_resolved
+          sc_only = sc_conf.is_a?(NamedTupleLiteral) ? sc_conf[:only] : nil
+          sc_except = sc_conf.is_a?(NamedTupleLiteral) ? sc_conf[:except] : nil
           sc_resolved.constants.each do |case_const|
-            produced_names << "--" + case_const.stringify.underscore.tr("_", "-")
+            case_under = case_const.stringify.underscore
+            sc_included = sc_only ? sc_only.any? { |case_sym| case_sym.id.stringify == case_under } : (sc_except ? !sc_except.any? { |case_sym| case_sym.id.stringify == case_under } : true)
+            produced_names << "--" + case_under.tr("_", "-") if sc_included
+          end
+          if sc_conf.is_a?(NamedTupleLiteral) && (sc_aliases_reg = sc_conf[:aliases])
+            sc_aliases_reg.keys.each do |alias_key|
+              produced_names << "--" + alias_key.stringify.underscore.tr("_", "-")
+            end
           end
         end
 
@@ -172,8 +219,8 @@ module Shell::AutoComplete
             end
           end
         end
-        decl_base = decl_inner.id.stringify.split("(")[0]
-        storage_base = storage_inner.id.stringify.split("(")[0]
+        decl_base = decl_inner.id.stringify.split("(")[0].gsub(/\A::/, "")
+        storage_base = storage_inner.id.stringify.split("(")[0].gsub(/\A::/, "")
         storage_remapped = decl_base != storage_base
         # A remapped storage type comes from the transformer's own source file
         # (its __arg_transform return type), so it must be spliced fully
@@ -190,7 +237,7 @@ module Shell::AutoComplete
         hidden: {% if opts[:hidden] == nil %}false{% else %}{{ opts[:hidden] }}{% end %},
         transform_with: {{ opts[:transform_with] }},
         validate_with: {{ opts[:validate_with] }},
-        shortcut_flags: {% if opts[:shortcut_flags] %}true{% else %}false{% end %},
+        shortcut_flags: {% if opts[:shortcut_flags] %}{{ opts[:shortcut_flags] }}{% else %}false{% end %},
         set_operations: {% if opts[:set_operations] %}true{% else %}false{% end %},
         delimiter: {% if opts.keys.map(&.stringify).includes?("delimiter") %}{{ opts[:delimiter] }}{% else %}","{% end %},
         forwarded_opts: {% if forwarded_pairs.empty? %}NamedTuple.new{% else %}{ {{ forwarded_pairs.join(", ").id }} }{% end %},
