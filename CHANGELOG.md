@@ -4,6 +4,11 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Compile-time duplicate flag-name detection. Every spelling a `flag` declaration produces — canonical, aliases, short form, the generated `--no-` negation, and enum `shortcut_flags:` switches — registers in a per-command registry, and a collision is now a compile error naming both flags instead of undefined behavior (previously the first declaration silently won at parse time while help showed both). (#10)
+- `override: true` on `flag` for intentional redefinition (the mixin-override case). The overriding declaration replaces the prior flag wholesale: all of the replaced flag's spellings are freed, and parse, help, and completion follow the replacement. The overriding flag must bind a new property; the replaced property remains declared but is no longer set by parsing. (#10)
+
 ### Fixed
 
 - Generated code now emits fully qualified type paths, so commands defined inside a namespace that shadows a top-level constant (the standard `Log = ::Log.for self` pattern, a local `Path` constant, etc.) compile and parse correctly. Resolved types spliced by the parse/help/completion generators get a `::` prefix; storage-remapped property types (e.g. `File`/`Dir` → `Path`, whose spelling comes from the transformer's own source file) are qualified the same way. User-written type spellings are still respliced verbatim, so relative paths that resolve in the user's namespace keep working. (#9)

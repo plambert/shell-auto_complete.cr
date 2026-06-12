@@ -9,6 +9,16 @@ module Shell::AutoComplete
     macro inherited
       SUBCOMMANDS = [] of {String, ::Shell::AutoComplete::Command.class}
 
+      # Compile-time flag-name registry (issue #10). The `flag` macro appends
+      # every spelling a declaration produces (canonical, aliases, short form,
+      # generated negations, enum shortcut switches) plus the owning property
+      # name, and raises on collision. `override: true` tombstones the prior
+      # owner's entries and records its property in OVERRIDDEN_FLAG_IVARS,
+      # which every generator consults to skip the replaced declaration.
+      FLAG_REGISTRY_NAMES   = [] of ::String
+      FLAG_REGISTRY_OWNERS  = [] of ::String
+      OVERRIDDEN_FLAG_IVARS = [] of ::String
+
       macro subcommand(klass)
         SUBCOMMANDS << { \{{klass}}.command_name, \{{klass}}.as(::Shell::AutoComplete::Command.class) }
 
@@ -50,7 +60,7 @@ module Shell::AutoComplete
 
       def self.flag_info(ivar_name : String) : ::Shell::AutoComplete::Command::FlagInfo
         \{% for ivar in @type.instance_vars %}
-          \{% if fann = ivar.annotation(::Shell::AutoComplete::FlagDef) %}
+          \{% if (fann = ivar.annotation(::Shell::AutoComplete::FlagDef)) && !@type.constant("OVERRIDDEN_FLAG_IVARS").includes?(ivar.name.stringify) %}
             if ivar_name == \{{ivar.name.stringify}}
               return ::Shell::AutoComplete::Command::FlagInfo.new(
                 canonical: \{{fann[:canonical]}},
@@ -67,7 +77,7 @@ module Shell::AutoComplete
       def self.parse(argv : Array(String)) : self
         specs = [] of ::Shell::AutoComplete::Parser::FlagSpec
         \{% for ivar in @type.instance_vars %}
-          \{% if fann = ivar.annotation(::Shell::AutoComplete::FlagDef) %}
+          \{% if (fann = ivar.annotation(::Shell::AutoComplete::FlagDef)) && !@type.constant("OVERRIDDEN_FLAG_IVARS").includes?(ivar.name.stringify) %}
             \{% if ivar.type.id.stringify == "Bool" %}
               pos_names_\{{ivar.name}} = [\{{fann[:canonical]}}] of ::String
               \{% if fann[:short] %}
@@ -121,7 +131,7 @@ module Shell::AutoComplete
         result = ::Shell::AutoComplete::Parser.parse_argv(argv, specs, dash_positionals: \{{ @type.instance_vars.any? { |iv| iv.annotation(::Shell::AutoComplete::PositionalsDef) && iv.annotation(::Shell::AutoComplete::PositionalsDef)[:set_delta] } }})
         inst = new
         \{% for ivar in @type.instance_vars %}
-          \{% if fann = ivar.annotation(::Shell::AutoComplete::FlagDef) %}
+          \{% if (fann = ivar.annotation(::Shell::AutoComplete::FlagDef)) && !@type.constant("OVERRIDDEN_FLAG_IVARS").includes?(ivar.name.stringify) %}
             \{% if ivar.type.id.stringify == "Bool" %}
               if vs = result[:values][\{{fann[:canonical]}}]?
                 if last_v = vs.last?
@@ -416,7 +426,7 @@ module Shell::AutoComplete
       def self.help(parent_prefix : String? = nil) : String
         flags = [] of ::Shell::AutoComplete::Help::FlagRow
         \{% for ivar in @type.instance_vars %}
-          \{% if fann = ivar.annotation(::Shell::AutoComplete::FlagDef) %}
+          \{% if (fann = ivar.annotation(::Shell::AutoComplete::FlagDef)) && !@type.constant("OVERRIDDEN_FLAG_IVARS").includes?(ivar.name.stringify) %}
             \{% unless fann[:hidden] %}
               \{% alias_list = fann[:aliases] %}
               flags << {
@@ -510,7 +520,7 @@ module Shell::AutoComplete
         # Check if prev word is a flag that takes a value — emit value candidates.
         # @[Flags] enum trailing-comma completion.
         \{% for ivar in @type.instance_vars %}
-          \{% if fann = ivar.annotation(::Shell::AutoComplete::FlagDef) %}
+          \{% if (fann = ivar.annotation(::Shell::AutoComplete::FlagDef)) && !@type.constant("OVERRIDDEN_FLAG_IVARS").includes?(ivar.name.stringify) %}
             \{% inner_type = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
             \{% if inner_type.resolve.annotation(::Flags) %}
               all_names_\{{ivar.name}} = [\{{fann[:canonical]}}] of ::String
@@ -539,7 +549,7 @@ module Shell::AutoComplete
 
         # complete_with: and per-flag __arg_complete_<name> dispatch.
         \{% for ivar in @type.instance_vars %}
-          \{% if fann = ivar.annotation(::Shell::AutoComplete::FlagDef) %}
+          \{% if (fann = ivar.annotation(::Shell::AutoComplete::FlagDef)) && !@type.constant("OVERRIDDEN_FLAG_IVARS").includes?(ivar.name.stringify) %}
             \{% per_flag_complete_method = "__arg_complete_" + ivar.name.stringify %}
             \{% has_per_flag_complete = @type.class.methods.any? { |m| m.name.stringify == per_flag_complete_method } %}
             \{% cw = fann[:complete_with] %}
@@ -597,7 +607,7 @@ module Shell::AutoComplete
             unless current.starts_with?("-")
               pos_value_flags = ::Set(::String).new
               \{% for ivar in @type.instance_vars %}
-                \{% if fann = ivar.annotation(::Shell::AutoComplete::FlagDef) %}
+                \{% if (fann = ivar.annotation(::Shell::AutoComplete::FlagDef)) && !@type.constant("OVERRIDDEN_FLAG_IVARS").includes?(ivar.name.stringify) %}
                   \{% if ivar.type.id.stringify != "Bool" %}
                     pos_value_flags << \{{fann[:canonical]}}
                     \{% for alias_name in fann[:aliases] %}
@@ -660,7 +670,7 @@ module Shell::AutoComplete
         # Flag-name completion when current starts with "-" or is empty.
         if current.starts_with?("-") || current.empty?
           \{% for ivar in @type.instance_vars %}
-            \{% if fann = ivar.annotation(::Shell::AutoComplete::FlagDef) %}
+            \{% if (fann = ivar.annotation(::Shell::AutoComplete::FlagDef)) && !@type.constant("OVERRIDDEN_FLAG_IVARS").includes?(ivar.name.stringify) %}
               \{% inner_type_flag = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
               canonical_\{{ivar.name}} = \{{fann[:canonical]}}
               canonical_matches_\{{ivar.name}} = canonical_\{{ivar.name}}.starts_with?(current)
