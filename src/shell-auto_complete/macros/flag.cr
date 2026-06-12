@@ -20,17 +20,37 @@ module Shell::AutoComplete
         long_forms = [] of StringLiteral
         short_form = nil
         description = nil
+        placeholder = nil
 
         strings.each do |lit|
           if lit.is_a?(StringLiteral)
             raw = lit.id.stringify
+            if raw.starts_with?("-") && raw.includes?(" ")
+              # Embedded placeholder, callback-parser style: "--after TIME".
+              # The flag name cannot contain a space, so the first space is an
+              # unambiguous delimiter; the remainder is the placeholder.
+              embedded_parts = raw.split(" ")
+              embedded_placeholder = embedded_parts[1..-1].join(" ")
+              if placeholder != nil && placeholder != embedded_placeholder
+                raise "flag #{decl.var} declares more than one placeholder"
+              end
+              placeholder = embedded_placeholder
+              raw = embedded_parts[0]
+              lit = embedded_parts[0]
+            end
             if raw.starts_with?("--")
               long_forms << lit
             elsif raw.starts_with?("-") && raw.size == 2
               raise "more than one short flag given" if short_form
               short_form = lit
+            elsif description == nil && raw =~ /\A[A-Z][A-Z0-9:=\[\]_-]*\z/
+              # Positional all-caps placeholder; must precede the description.
+              raise "flag #{decl.var} declares more than one placeholder" if placeholder != nil
+              placeholder = raw
+            elsif description == nil
+              description = lit
             else
-              description = lit if description == nil
+              raise "unconsumed extra string literal #{lit} on flag #{decl.var} (placeholder and description already given)"
             end
           elsif lit.is_a?(Path)
             # Constant reference as the description (issue #18). Resolve at
@@ -62,6 +82,11 @@ module Shell::AutoComplete
           else
             description = named_description
           end
+        end
+        if named_placeholder = opts[:placeholder]
+          raise "flag #{decl.var} declares more than one placeholder" if placeholder != nil
+          raise "placeholder: must be a string literal on flag #{decl.var}" unless named_placeholder.is_a?(StringLiteral)
+          placeholder = named_placeholder.id.stringify
         end
         raise "no long flag given for #{decl}" if long_forms.empty?
         canonical = long_forms[0]
@@ -234,7 +259,7 @@ module Shell::AutoComplete
           reg_owners << var_name
         end
 
-        consumed_keys = [:description, :transform_with, :validate_with, :negatable, :complete_with, :hidden, :shortcut_flags, :delimiter, :set_operations, :override]
+        consumed_keys = [:description, :placeholder, :transform_with, :validate_with, :negatable, :complete_with, :hidden, :shortcut_flags, :delimiter, :set_operations, :override]
         forwarded_pairs = [] of StringLiteral
         opts.each do |opt_key, opt_val|
           next if consumed_keys.includes?(opt_key)
@@ -263,6 +288,63 @@ module Shell::AutoComplete
         # (its __arg_transform return type), so it must be spliced fully
         # qualified — the user's namespace may shadow it (issue #9).
         storage_inner_q = (storage_inner.stringify.starts_with?("::") || storage_inner.stringify.starts_with?("(")) ? storage_inner : "::#{storage_inner}".id
+
+        # ---- value placeholder (issue #19) ----
+        # When no placeholder was given, derive one from the declared type so
+        # every value flag's help line shows what it consumes. Switches get
+        # none (and explicitly giving one is an error).
+        if placeholder != nil && decl_is_switch
+          raise "switch flag #{decl.var} cannot take a placeholder"
+        end
+        if placeholder == nil && !decl_is_switch
+          choices_opt = opts[:choices]
+          if choices_opt.is_a?(ArrayLiteral) && choices_opt.size <= 4 && choices_opt.size > 0
+            placeholder = choices_opt.map(&.id.stringify).join("|")
+          elsif decl_base == "Hash"
+            placeholder = "KEY=VALUE"
+          else
+            if ["Array", "Set"].includes?(decl_base) && decl_inner.is_a?(Generic)
+              ph_type = decl_inner.type_vars[0]
+            else
+              ph_type = decl_inner
+            end
+            ph_base = ph_type.id.stringify.gsub(/\A::/, "").split("(")[0].split("::")[-1]
+            ph_enum_cases = nil
+            if ph_type.is_a?(Path)
+              ph_resolved = ph_type.resolve?
+              if ph_resolved.is_a?(TypeNode) && ph_resolved < ::Enum
+                ph_enum_cases = ph_resolved.constants.map(&.stringify.underscore.tr("_", "-"))
+              end
+            end
+            if ph_enum_cases
+              placeholder = ph_enum_cases.size <= 4 ? ph_enum_cases.join("|") : ph_base.upcase
+            elsif ["Int8", "Int16", "Int32", "Int64", "Int128", "UInt8", "UInt16", "UInt32", "UInt64", "UInt128", "BigInt", "PositiveInt", "NonNegativeInt", "Percentage"].includes?(ph_base)
+              placeholder = "NUMBER"
+            elsif ["Float32", "Float64", "BigFloat"].includes?(ph_base)
+              placeholder = "FLOAT"
+            elsif ph_base == "String"
+              placeholder = "TEXT"
+            elsif ph_base == "Path"
+              placeholder = "PATH"
+            elsif ph_base == "File"
+              placeholder = "FILE"
+            elsif ph_base == "Dir"
+              placeholder = "DIR"
+            elsif ph_base == "URI"
+              placeholder = "URL"
+            elsif ["Time", "EpochTime"].includes?(ph_base)
+              placeholder = "TIME"
+            elsif ph_base == "Date"
+              placeholder = "DATE"
+            elsif ph_base == "Regex"
+              placeholder = "REGEX"
+            elsif ph_base == "Char"
+              placeholder = "CHAR"
+            else
+              placeholder = "VALUE"
+            end
+          end
+        end
       %}
 
       @[::Shell::AutoComplete::FlagDef(
@@ -280,6 +362,7 @@ module Shell::AutoComplete
         forwarded_opts: {% if forwarded_pairs.empty? %}NamedTuple.new{% else %}{ {{ forwarded_pairs.join(", ").id }} }{% end %},
         transformer_type: {% if storage_remapped %}{{ decl_inner }}{% else %}nil{% end %},
         complete_with: {{ opts[:complete_with] }},
+        placeholder: {% if placeholder %}{{ placeholder }}{% else %}nil{% end %},
       )]
       {% if storage_remapped %}
         {% if decl_nullable %}

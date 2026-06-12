@@ -29,7 +29,7 @@ end
 
 # A leaf-only command (no subcommands) — like the cat example
 Shell::AutoComplete.command AllHelpLeafOnly, name: "leafonly", description: "no subs" do
-  flag value : String?, "--value", "v", "v"
+  flag value : String?, "--value", "v"
 end
 
 describe "--all-help" do

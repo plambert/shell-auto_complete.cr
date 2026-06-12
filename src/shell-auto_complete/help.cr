@@ -1,6 +1,6 @@
 module Shell::AutoComplete
   module Help
-    alias FlagRow = NamedTuple(canonical: String, aliases: Array(String), short: String?, description: String)
+    alias FlagRow = NamedTuple(canonical: String, aliases: Array(String), short: String?, description: String, placeholder: String?)
     alias SubcommandRow = NamedTuple(name: String, description: String)
     alias PositionalRow = NamedTuple(name: String, description: String, variadic: Bool)
 
@@ -27,7 +27,11 @@ module Shell::AutoComplete
             forms = [flag_row[:canonical]] + flag_row[:aliases]
             short = flag_row[:short]
             forms << short.as(String) if short
-            str << "  " << forms.join(", ").ljust(30) << "  " << flag_row[:description] << "\n"
+            left = forms.join(", ")
+            if value_placeholder = flag_row[:placeholder]
+              left += " " + value_placeholder
+            end
+            str << "  " << left.ljust(30) << "  " << flag_row[:description] << "\n"
           end
         end
         unless subcommands.empty?
