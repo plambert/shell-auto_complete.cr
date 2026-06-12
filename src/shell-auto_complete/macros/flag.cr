@@ -94,8 +94,14 @@ module Shell::AutoComplete
         end
         produced_names << short_form.id.stringify if short_form
         negatable_opt = opts[:negatable] == nil ? true : opts[:negatable]
-        if decl_type.id.stringify == "Bool" && negatable_opt
-          produced_names << "--no-" + canonical.id.stringify.gsub(/\A--/, "")
+        # Bool and Bool? are both switches; every long form (canonical and
+        # aliases) gets a generated `--no-` negation.
+        switch_non_nil = decl_type.is_a?(Union) ? decl_type.types.reject { |type_node| type_node.resolve == Nil } : [decl_type]
+        decl_is_switch = switch_non_nil.size == 1 && switch_non_nil[0].resolve == Bool
+        if decl_is_switch && negatable_opt
+          long_forms.each do |long_form|
+            produced_names << "--no-" + long_form.id.stringify.gsub(/\A--/, "")
+          end
         end
         if opts[:shortcut_flags] && sc_resolved
           sc_resolved.constants.each do |case_const|

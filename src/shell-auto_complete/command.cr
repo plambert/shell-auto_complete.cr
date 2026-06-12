@@ -74,12 +74,53 @@ module Shell::AutoComplete
         raise "no flag named \#{ivar_name}"
       end
 
+      # Whether the named flag (by declaration name) was explicitly given on
+      # the command line, under any of its spellings: canonical, aliases,
+      # short form, generated `--no-` negations, and enum shortcut switches.
+      # Distinguishes an explicit value (even one equal to the default, or an
+      # explicit `--no-x`) from the flag being left untouched.
+      def flag_given?(name : Symbol | String) : Bool
+        name_str = name.to_s
+        \{% for ivar in @type.instance_vars %}
+          \{% if (fann = ivar.annotation(::Shell::AutoComplete::FlagDef)) && !@type.constant("OVERRIDDEN_FLAG_IVARS").includes?(ivar.name.stringify) %}
+            if name_str == \{{ivar.name.stringify}}
+              spellings_\{{ivar.name}} = [\{{fann[:canonical]}}] of ::String
+              \{% for alias_name in fann[:aliases] %}
+                spellings_\{{ivar.name}} << \{{alias_name}}
+              \{% end %}
+              \{% if fann[:short] %}
+                spellings_\{{ivar.name}} << \{{fann[:short]}}
+              \{% end %}
+              \{% is_switch = ivar.type.id.stringify == "Bool" || (ivar.type.union? && ivar.type.union_types.all? { |ut| ut == Nil || ut.id.stringify == "Bool" } && ivar.type.union_types.any? { |ut| ut.id.stringify == "Bool" }) %}
+              \{% if is_switch && fann[:negatable] %}
+                spellings_\{{ivar.name}} << "--no-" + \{{fann[:canonical]}}.gsub(/^--/, "")
+                \{% for alias_name in fann[:aliases] %}
+                  spellings_\{{ivar.name}} << "--no-" + \{{alias_name}}.gsub(/^--/, "")
+                \{% end %}
+              \{% end %}
+              \{% if fann[:shortcut_flags] %}
+                \{% inner_type_fg = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
+                \{% for case_const in inner_type_fg.resolve.constants %}
+                  spellings_\{{ivar.name}} << "--" + \{{case_const.stringify.underscore.tr("_", "-")}}
+                \{% end %}
+              \{% end %}
+              return parsed_occurrences.any? { |occurrence| spellings_\{{ivar.name}}.includes?(occurrence[0]) }
+            end
+          \{% end %}
+        \{% end %}
+        raise ::ArgumentError.new("no flag named " + name_str)
+      end
+
       def self.parse(argv : Array(String)) : self
         specs = [] of ::Shell::AutoComplete::Parser::FlagSpec
         \{% for ivar in @type.instance_vars %}
           \{% if (fann = ivar.annotation(::Shell::AutoComplete::FlagDef)) && !@type.constant("OVERRIDDEN_FLAG_IVARS").includes?(ivar.name.stringify) %}
-            \{% if ivar.type.id.stringify == "Bool" %}
+            \{% is_switch = ivar.type.id.stringify == "Bool" || (ivar.type.union? && ivar.type.union_types.all? { |ut| ut == Nil || ut.id.stringify == "Bool" } && ivar.type.union_types.any? { |ut| ut.id.stringify == "Bool" }) %}
+            \{% if is_switch %}
               pos_names_\{{ivar.name}} = [\{{fann[:canonical]}}] of ::String
+              \{% for alias_name in fann[:aliases] %}
+                pos_names_\{{ivar.name}} << \{{alias_name}}
+              \{% end %}
               \{% if fann[:short] %}
                 pos_names_\{{ivar.name}} << \{{fann[:short]}}
               \{% end %}
@@ -90,10 +131,13 @@ module Shell::AutoComplete
                 bool_value: true,
               )
               \{% if fann[:negatable] %}
-                negative_name = "--no-" + \{{fann[:canonical]}}.gsub(/^--/, "")
+                neg_names_\{{ivar.name}} = ["--no-" + \{{fann[:canonical]}}.gsub(/^--/, "")] of ::String
+                \{% for alias_name in fann[:aliases] %}
+                  neg_names_\{{ivar.name}} << "--no-" + \{{alias_name}}.gsub(/^--/, "")
+                \{% end %}
                 specs << ::Shell::AutoComplete::Parser::FlagSpec.new(
                   canonical: \{{fann[:canonical]}},
-                  names: [negative_name],
+                  names: neg_names_\{{ivar.name}},
                   takes_value: false,
                   bool_value: false,
                 )
@@ -133,7 +177,8 @@ module Shell::AutoComplete
         inst.parsed_occurrences = result[:occurrences]
         \{% for ivar in @type.instance_vars %}
           \{% if (fann = ivar.annotation(::Shell::AutoComplete::FlagDef)) && !@type.constant("OVERRIDDEN_FLAG_IVARS").includes?(ivar.name.stringify) %}
-            \{% if ivar.type.id.stringify == "Bool" %}
+            \{% is_switch = ivar.type.id.stringify == "Bool" || (ivar.type.union? && ivar.type.union_types.all? { |ut| ut == Nil || ut.id.stringify == "Bool" } && ivar.type.union_types.any? { |ut| ut.id.stringify == "Bool" }) %}
+            \{% if is_switch %}
               if vs = result[:values][\{{fann[:canonical]}}]?
                 if last_v = vs.last?
                   inst.\{{ivar.name}} = (last_v == "true")
@@ -609,7 +654,8 @@ module Shell::AutoComplete
               pos_value_flags = ::Set(::String).new
               \{% for ivar in @type.instance_vars %}
                 \{% if (fann = ivar.annotation(::Shell::AutoComplete::FlagDef)) && !@type.constant("OVERRIDDEN_FLAG_IVARS").includes?(ivar.name.stringify) %}
-                  \{% if ivar.type.id.stringify != "Bool" %}
+                  \{% is_switch = ivar.type.id.stringify == "Bool" || (ivar.type.union? && ivar.type.union_types.all? { |ut| ut == Nil || ut.id.stringify == "Bool" } && ivar.type.union_types.any? { |ut| ut.id.stringify == "Bool" }) %}
+                  \{% unless is_switch %}
                     pos_value_flags << \{{fann[:canonical]}}
                     \{% for alias_name in fann[:aliases] %}
                       pos_value_flags << \{{alias_name}}
@@ -695,6 +741,12 @@ module Shell::AutoComplete
                   if \{{alias_name}}.starts_with?(current)
                     result << \{{alias_name}}
                   end
+                  \{% if inner_type_flag.id.stringify == "Bool" && fann[:negatable] %}
+                    neg_alias_\{{ivar.name}} = "--no-" + \{{alias_name}}.gsub(/^--/, "")
+                    if neg_alias_\{{ivar.name}}.starts_with?(current)
+                      result << neg_alias_\{{ivar.name}}
+                    end
+                  \{% end %}
                 \{% end %}
               end
             \{% end %}
