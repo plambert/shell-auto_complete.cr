@@ -9,15 +9,15 @@ Shell::AutoComplete.command CollTransformCli, name: "ct", description: "x" do
     transform_with: :parse_mapping
 
   flag ports : Array(Int32) = [] of Int32, "--ports", "Ports",
-    validate_with: :check_port
+    delimiter: ",", validate_with: :check_port
 
   flag tags : Set(String) = Set(String).new, "--tags", "Tags",
-    set_operations: true, transform_with: :normalize_tag
+    delimiter: ",", set_operations: true, transform_with: :normalize_tag
 
   flag weights : Hash(String, Int32) = {} of String => Int32, "--weight", "Weights",
     validate_with: :check_weight
 
-  flag codes : Array(String) = [] of String, "--codes", "Codes"
+  flag codes : Array(String) = [] of String, "--codes", "Codes", delimiter: ","
 
   def self.parse_mapping(value : String) : Tuple(String, String)
     src, sep, dst = value.partition(':')

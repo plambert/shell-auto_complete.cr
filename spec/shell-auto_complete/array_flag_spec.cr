@@ -1,7 +1,7 @@
 require "../spec_helper"
 
 Shell::AutoComplete.command ArrCli, name: "a", description: "x" do
-  flag tags : Array(String) = [] of String, "--tag", "t"
+  flag tags : Array(String) = [] of String, "--tag", "t", delimiter: ","
 end
 
 Shell::AutoComplete.command ArrSemCli, name: "as", description: "x" do

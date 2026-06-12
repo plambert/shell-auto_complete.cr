@@ -120,6 +120,16 @@ module Shell::AutoComplete
           end
         end
 
+        # Collection flags must state their splitting behavior explicitly
+        # (issue #17). A comma-split default silently corrupts values whose
+        # data legally contains commas (paths, regexes, URLs, titles), so the
+        # author must choose: delimiter: "," to split each value, or
+        # delimiter: nil to take each occurrence as one element.
+        decl_type_base = decl_type.id.stringify.gsub(/\A::/, "").split("(")[0]
+        if ["Array", "Set"].includes?(decl_type_base) && !opts.keys.map(&.stringify).includes?("delimiter")
+          raise "collection flag #{decl.var} must state its splitting behavior: pass delimiter: \",\" (split each value on commas) or delimiter: nil (each occurrence is one element)"
+        end
+
         # ---- duplicate-name detection (issue #10) ----
         # Collect every spelling this declaration produces, including generated
         # `--no-` negations and enum shortcut switches, and check them against
