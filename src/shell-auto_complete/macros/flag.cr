@@ -172,6 +172,15 @@ module Shell::AutoComplete
           end
         end
 
+        # hash_operations: false makes the bare `-key` delete form a parse
+        # error on this flag (issue #20) — useful when deletion is
+        # meaningless and a `-foo` typo of `foo=...` should be loud.
+        if opts.keys.map(&.stringify).includes?("hash_operations")
+          unless decl_type.id.stringify.gsub(/\A::/, "").starts_with?("Hash(")
+            raise "hash_operations: is only valid on Hash flags (flag #{decl.var})"
+          end
+        end
+
         # Collection flags must state their splitting behavior explicitly
         # (issue #17). A comma-split default silently corrupts values whose
         # data legally contains commas (paths, regexes, URLs, titles), so the
@@ -259,7 +268,7 @@ module Shell::AutoComplete
           reg_owners << var_name
         end
 
-        consumed_keys = [:description, :placeholder, :transform_with, :validate_with, :negatable, :complete_with, :hidden, :shortcut_flags, :delimiter, :set_operations, :override]
+        consumed_keys = [:description, :placeholder, :transform_with, :validate_with, :negatable, :complete_with, :hidden, :shortcut_flags, :delimiter, :set_operations, :hash_operations, :override]
         forwarded_pairs = [] of StringLiteral
         opts.each do |opt_key, opt_val|
           next if consumed_keys.includes?(opt_key)
@@ -358,6 +367,7 @@ module Shell::AutoComplete
         validate_with: {{ opts[:validate_with] }},
         shortcut_flags: {% if opts[:shortcut_flags] %}{{ opts[:shortcut_flags] }}{% else %}false{% end %},
         set_operations: {% if opts[:set_operations] %}true{% else %}false{% end %},
+        hash_operations: {% if opts[:hash_operations] == nil %}true{% else %}{{ opts[:hash_operations] }}{% end %},
         delimiter: {% if opts.keys.map(&.stringify).includes?("delimiter") %}{{ opts[:delimiter] }}{% else %}","{% end %},
         forwarded_opts: {% if forwarded_pairs.empty? %}NamedTuple.new{% else %}{ {{ forwarded_pairs.join(", ").id }} }{% end %},
         transformer_type: {% if storage_remapped %}{{ decl_inner }}{% else %}nil{% end %},
