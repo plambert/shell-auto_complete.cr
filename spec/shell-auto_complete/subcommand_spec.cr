@@ -122,11 +122,10 @@ describe "subcommand --help routing" do
     text.should contain("Usage: parent")
   end
 
-  it "unknown first token + --help still prints the root's help" do
-    io = IO::Memory.new
-    SubParent.dispatch(["bogus", "--help"], stdout: io)
-    text = io.to_s
-    text.should contain("Usage: parent")
+  it "unknown first token is rejected even when --help follows" do
+    expect_raises(Shell::AutoComplete::ParseError, /unknown subcommand: bogus/) do
+      SubParent.dispatch(["bogus", "--help"], rescue_errors: false)
+    end
   end
 
   it "subcommand --help with extra args ignores them" do

@@ -1,7 +1,13 @@
 module Shell::AutoComplete
+  # Defines a command class. `parent:` names another command class to inherit
+  # from (issue #22): the new command gains every flag the parent declares —
+  # properties, parsing, help (under an "Inherited options" heading), and
+  # completion — and may redeclare one with `override: true`. Routing is
+  # still declared separately with `subcommand` on the parent, so inheritance
+  # and routing compose but neither implies the other.
   macro command(type, **opts, &block)
     @[::Shell::AutoComplete::CommandDef({{ opts.double_splat }})]
-    class {{ type.id }} < ::Shell::AutoComplete::Command
+    class {{ type.id }} < {% if opts[:parent] %}{{ opts[:parent] }}{% else %}::Shell::AutoComplete::Command{% end %}
       {% if block %}{{ block.body }}{% end %}
     end
   end

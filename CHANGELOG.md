@@ -4,8 +4,14 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+### Added (flag inheritance, #22)
+
+- Parent-level flag inheritance: `parent: SomeCommand` on the `command` macro makes the new command inherit every flag the parent declares — properties, parsing, `flag_given?`, and completion all see them, and help renders them under an `Inherited options` heading. Inheritance composes with (but is independent of) `subcommand` routing, and chains through multiple levels. Collisions between an inherited flag and a leaf flag follow #10's rules: compile error by default, `override: true` to replace at the leaf (freeing all of the inherited flag's spellings).
+- Routing commands can carry their own flags. `dispatch` now walks argv past the command's own flags (and the values they consume) to find the subcommand word, so shared flags work before or after it (`app --verbose scan` and `app scan --verbose` both parse), and `app --init` with subcommands present parses `--init` instead of raising `unknown subcommand: --init`. Tokens after `--` never route. Shell completion descends past interleaved flags the same way.
+
 ### Changed
 
+- **BREAKING**: with subcommands present, an unknown dash token before the subcommand word is now `unknown flag: --x` (previously `unknown subcommand: --x`), and an unknown subcommand word is rejected even when `--help` appears later on the line (previously the `--help` intercept won and printed the root's help). (#22)
 - The `--help`, `-h`, and `--all-help` intercepts in `dispatch` now stop at the `--` terminator, consistent with the parser: a literal `--help` after `--` is a positional value, not a help request. (#21)
 - **BREAKING**: `delimiter:` is now a required choice on `Array(T)` and `Set(T)` flags — `","` (split each value) or `nil` (each occurrence is one element). Omitting it is a compile error. Previously every collection flag silently split on `,`, which corrupts values whose data legally contains commas (paths, regexes, URLs, titles) — the unsafe choice was the implicit one. `Hash(String, T)` flags are unaffected (no splitting happens there). Migration: add `delimiter: ","` to keep the old behavior. (#17)
 

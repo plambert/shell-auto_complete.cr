@@ -15,9 +15,15 @@ module Shell::AutoComplete
       # name, and raises on collision. `override: true` tombstones the prior
       # owner's entries and records its property in OVERRIDDEN_FLAG_IVARS,
       # which every generator consults to skip the replaced declaration.
-      FLAG_REGISTRY_NAMES   = [] of ::String
-      FLAG_REGISTRY_OWNERS  = [] of ::String
-      OVERRIDDEN_FLAG_IVARS = [] of ::String
+      # When the command inherits another command (`parent:` on the command
+      # macro), the registries seed from the parent's completed registries —
+      # interpolation re-parses the parent's array literal into fresh nodes,
+      # so later macro-time mutation of the child's copy never touches the
+      # parent. Inherited-vs-own collisions and `override: true` of an
+      # inherited flag then fall out of the issue #10 logic unchanged.
+      FLAG_REGISTRY_NAMES   = {% if @type.superclass && @type.superclass.has_constant?("FLAG_REGISTRY_NAMES") %}{{ @type.superclass.constant("FLAG_REGISTRY_NAMES") }}{% else %}[] of ::String{% end %}
+      FLAG_REGISTRY_OWNERS  = {% if @type.superclass && @type.superclass.has_constant?("FLAG_REGISTRY_OWNERS") %}{{ @type.superclass.constant("FLAG_REGISTRY_OWNERS") }}{% else %}[] of ::String{% end %}
+      OVERRIDDEN_FLAG_IVARS = {% if @type.superclass && @type.superclass.has_constant?("OVERRIDDEN_FLAG_IVARS") %}{{ @type.superclass.constant("OVERRIDDEN_FLAG_IVARS") }}{% else %}[] of ::String{% end %}
 
       macro subcommand(klass)
         SUBCOMMANDS << { \{{klass}}.command_name, \{{klass}}.as(::Shell::AutoComplete::Command.class) }
@@ -205,7 +211,7 @@ module Shell::AutoComplete
             \{% end %}
           \{% end %}
         \{% end %}
-        \{% for meth in @type.methods %}
+        \{% for meth in ([@type] + @type.ancestors).map(&.methods).reduce([] of Def) { |acc, meths| acc + meths } %}
           \{% if gann = meth.annotation(::Shell::AutoComplete::OrderedFlagGroupDef) %}
             \{% for spelling in gann[:spellings] %}
               specs << ::Shell::AutoComplete::Parser::FlagSpec.new(
@@ -220,14 +226,14 @@ module Shell::AutoComplete
         result = ::Shell::AutoComplete::Parser.parse_argv(argv, specs, dash_positionals: \{{ @type.instance_vars.any? { |iv| iv.annotation(::Shell::AutoComplete::PositionalsDef) && iv.annotation(::Shell::AutoComplete::PositionalsDef)[:set_delta] } }})
         inst = new
         inst.parsed_occurrences = result[:occurrences]
-        \{% if @type.methods.any? { |m| m.annotation(::Shell::AutoComplete::OrderedFlagGroupDef) } %}
+        \{% if ([@type] + @type.ancestors).any? { |owner_type| owner_type.methods.any? { |m| m.annotation(::Shell::AutoComplete::OrderedFlagGroupDef) } } %}
           # Ordered flag groups: deliver each member occurrence, in
           # command-line order, to the group's handler. The block records into
           # properties; an ArgumentError from it becomes a clean ParseError
           # carrying the matched spelling.
           result[:occurrences].each do |occurrence|
             case occurrence[0]
-            \{% for meth in @type.methods %}
+            \{% for meth in ([@type] + @type.ancestors).map(&.methods).reduce([] of Def) { |acc, meths| acc + meths } %}
               \{% if gann = meth.annotation(::Shell::AutoComplete::OrderedFlagGroupDef) %}
                 \{% for spelling in gann[:spellings] %}
                   when \{{spelling}}
@@ -659,13 +665,14 @@ module Shell::AutoComplete
           \{% if (fann = ivar.annotation(::Shell::AutoComplete::FlagDef)) && !@type.constant("OVERRIDDEN_FLAG_IVARS").includes?(ivar.name.stringify) %}
             \{% unless fann[:hidden] %}
               \{% alias_list = fann[:aliases] %}
+              \{% inherited_ivar = @type.superclass && @type.superclass.instance_vars.any? { |sup_ivar| sup_ivar.name == ivar.name } %}
               flags << {
                 canonical:   \{{fann[:canonical]}}.as(::String),
                 aliases:     \{% if alias_list.empty? %}([] of ::String)\{% else %}\{{alias_list}}.map(&.as(::String))\{% end %},
                 short:       \{{fann[:short]}}.as(::String?),
                 description: \{{fann[:description]}}.as(::String),
                 placeholder: \{{fann[:placeholder]}}.as(::String?),
-                group:       \{{fann[:group]}}.as(::String?),
+                group:       \{% if fann[:group] %}\{{fann[:group]}}.as(::String?)\{% elsif inherited_ivar %}"Inherited options".as(::String?)\{% else %}nil.as(::String?)\{% end %},
               }
               \{% if (sc_conf = fann[:shortcut_flags]) && sc_conf.is_a?(NamedTupleLiteral) && (sc_aliases = sc_conf[:aliases]) %}
                 \{% for alias_key in sc_aliases.keys %}
@@ -684,7 +691,7 @@ module Shell::AutoComplete
             \{% end %}
           \{% end %}
         \{% end %}
-        \{% for meth in @type.methods %}
+        \{% for meth in ([@type] + @type.ancestors).map(&.methods).reduce([] of Def) { |acc, meths| acc + meths } %}
           \{% if gann = meth.annotation(::Shell::AutoComplete::OrderedFlagGroupDef) %}
             \{% for member_idx in 0...gann[:spellings].size %}
               flags << {
@@ -881,7 +888,7 @@ module Shell::AutoComplete
                   \{% end %}
                 \{% end %}
               \{% end %}
-              \{% for meth in @type.methods %}
+              \{% for meth in ([@type] + @type.ancestors).map(&.methods).reduce([] of Def) { |acc, meths| acc + meths } %}
                 \{% if gann = meth.annotation(::Shell::AutoComplete::OrderedFlagGroupDef) %}
                   \{% for spelling in gann[:spellings] %}
                     pos_value_flags << \{{spelling}}
@@ -938,7 +945,7 @@ module Shell::AutoComplete
 
         # Flag-name completion when current starts with "-" or is empty.
         if current.starts_with?("-") || current.empty?
-          \{% for meth in @type.methods %}
+          \{% for meth in ([@type] + @type.ancestors).map(&.methods).reduce([] of Def) { |acc, meths| acc + meths } %}
             \{% if gann = meth.annotation(::Shell::AutoComplete::OrderedFlagGroupDef) %}
               \{% for spelling in gann[:spellings] %}
                 if \{{spelling}}.starts_with?(current)
@@ -1014,14 +1021,103 @@ module Shell::AutoComplete
           if ::Shell::AutoComplete::Completion::InstallFlag.handle(self, argv, stdout, stderr)
             return
           end
-          # Subcommand routing first — let the matched subcommand handle its own --help
-          if !argv.empty? && (match = SUBCOMMANDS.find { |(name, _)| name == argv[0] })
-            return match[1].dispatch(argv[1..], stdout: stdout, stderr: stderr, rescue_errors: false, parent_prefix: qualified)
-          end
-          # If we have subcommands but no argv, show help instead of trying to run.
-          if !SUBCOMMANDS.empty? && argv.empty?
-            stdout.puts help(parent_prefix)
-            return
+          # Routing (issue #22): walk argv past this command's own flags (and
+          # the values they consume) to find the subcommand word, so shared
+          # flags may appear before or after it, and a routing command
+          # invoked with only its own flags parses them instead of raising
+          # "unknown subcommand". Tokens after -- never route.
+          unless SUBCOMMANDS.empty?
+            if argv.empty?
+              stdout.puts help(parent_prefix)
+              return
+            end
+            value_flag_tokens = ::Set(::String).new
+            switch_flag_tokens = ::Set(::String){"--help", "-h", "--all-help"}
+            value_flag_tokens << shell_completion_flag_name
+            \{% for ivar in @type.instance_vars %}
+              \{% if (fann = ivar.annotation(::Shell::AutoComplete::FlagDef)) && !@type.constant("OVERRIDDEN_FLAG_IVARS").includes?(ivar.name.stringify) %}
+                \{% is_switch = ivar.type.id.stringify == "Bool" || (ivar.type.union? && ivar.type.union_types.all? { |ut| ut == Nil || ut.id.stringify == "Bool" } && ivar.type.union_types.any? { |ut| ut.id.stringify == "Bool" }) %}
+                \{% if is_switch %}
+                  switch_flag_tokens << \{{fann[:canonical]}}
+                  \{% for alias_name in fann[:aliases] %}
+                    switch_flag_tokens << \{{alias_name}}
+                  \{% end %}
+                  \{% if fann[:short] %}
+                    switch_flag_tokens << \{{fann[:short]}}
+                  \{% end %}
+                  \{% if fann[:negatable] %}
+                    switch_flag_tokens << "--no-" + \{{fann[:canonical]}}.gsub(/^--/, "")
+                    \{% for alias_name in fann[:aliases] %}
+                      switch_flag_tokens << "--no-" + \{{alias_name}}.gsub(/^--/, "")
+                    \{% end %}
+                  \{% end %}
+                \{% else %}
+                  value_flag_tokens << \{{fann[:canonical]}}
+                  \{% for alias_name in fann[:aliases] %}
+                    value_flag_tokens << \{{alias_name}}
+                  \{% end %}
+                  \{% if fann[:short] %}
+                    value_flag_tokens << \{{fann[:short]}}
+                  \{% end %}
+                  \{% if sc_conf = fann[:shortcut_flags] %}
+                    \{% inner_type_rt = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
+                    \{% sc_only = sc_conf.is_a?(NamedTupleLiteral) ? sc_conf[:only] : nil %}
+                    \{% sc_except = sc_conf.is_a?(NamedTupleLiteral) ? sc_conf[:except] : nil %}
+                    \{% for case_const in inner_type_rt.resolve.constants %}
+                      \{% case_under = case_const.stringify.underscore %}
+                      \{% sc_included = sc_only ? sc_only.any? { |case_sym| case_sym.id.stringify == case_under } : (sc_except ? !sc_except.any? { |case_sym| case_sym.id.stringify == case_under } : true) %}
+                      \{% if sc_included %}
+                        switch_flag_tokens << "--" + \{{case_under.tr("_", "-")}}
+                      \{% end %}
+                    \{% end %}
+                    \{% if sc_conf.is_a?(NamedTupleLiteral) && (sc_aliases = sc_conf[:aliases]) %}
+                      \{% for alias_key in sc_aliases.keys %}
+                        switch_flag_tokens << "--" + \{{alias_key.stringify.underscore.tr("_", "-")}}
+                      \{% end %}
+                    \{% end %}
+                  \{% end %}
+                \{% end %}
+              \{% end %}
+            \{% end %}
+            \{% for meth in ([@type] + @type.ancestors).map(&.methods).reduce([] of Def) { |acc, meths| acc + meths } %}
+              \{% if gann = meth.annotation(::Shell::AutoComplete::OrderedFlagGroupDef) %}
+                \{% for spelling in gann[:spellings] %}
+                  value_flag_tokens << \{{spelling}}
+                \{% end %}
+              \{% end %}
+            \{% end %}
+            route_index = 0
+            subcommand_word = nil
+            subcommand_index = -1
+            while route_index < argv.size
+              route_token = argv[route_index]
+              break if route_token == "--"
+              if route_token.starts_with?("-") && route_token.size > 1
+                route_name = route_token.partition('=')[0]
+                if value_flag_tokens.includes?(route_name)
+                  route_index += 1 unless route_token.includes?('=')
+                elsif switch_flag_tokens.includes?(route_name)
+                  # consumes no value
+                else
+                  raise ::Shell::AutoComplete::ParseError.new("unknown flag: #{route_name}")
+                end
+              else
+                subcommand_word = route_token
+                subcommand_index = route_index
+                break
+              end
+              route_index += 1
+            end
+            if subcommand_word
+              if match = SUBCOMMANDS.find { |(name, _)| name == subcommand_word }
+                routed_argv = argv.dup
+                routed_argv.delete_at(subcommand_index)
+                return match[1].dispatch(routed_argv, stdout: stdout, stderr: stderr, rescue_errors: false, parent_prefix: qualified)
+              end
+              raise ::Shell::AutoComplete::ParseError.new("unknown subcommand: #{subcommand_word}")
+            end
+            # No subcommand word: a routing command invoked with only its own
+            # flags — fall through to the intercepts and parse + run.
           end
           # Intercepts respect the -- terminator, consistent with the parser:
           # a literal "--help" after -- is a positional, not a help request.
@@ -1062,10 +1158,6 @@ module Shell::AutoComplete
               end
             \{% end %}
           \{% end %}
-          # Unknown subcommand rejection
-          if !SUBCOMMANDS.empty? && !argv.empty?
-            raise ::Shell::AutoComplete::ParseError.new("unknown subcommand: #{argv[0]}")
-          end
           inst = parse(argv)
           inst.run
           inst

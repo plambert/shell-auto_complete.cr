@@ -9,17 +9,24 @@ module Shell::AutoComplete::Completion
       # If no words (yet), nothing to complete.
       return true if words.empty?
 
-      # Descend into subcommands: while the cursor is past the first argument and
-      # words[1] names a subcommand of the current target, shift that token off
-      # (so it becomes the new index-0 "program name" slot) and decrement cword,
-      # recursing into the subcommand class.
+      # Descend into subcommands: scan the words before the cursor; a token
+      # naming a subcommand of the current target descends (the token is
+      # removed and cword decremented), anything else — a flag of the
+      # routing command or a value it consumed — is skipped, so shared flags
+      # before the subcommand word don't block descent.
       target = klass
-      while cword >= 2 && words.size >= 2
-        subcommand = target.subcommand_named(words[1])
-        break unless subcommand
-        target = subcommand
-        words = words[1..]
-        cword -= 1
+      scan_index = 1
+      words = words.dup
+      while scan_index < cword && scan_index < words.size
+        token = words[scan_index]
+        break if token == "--"
+        if subcommand = target.subcommand_named(token)
+          target = subcommand
+          words.delete_at(scan_index)
+          cword -= 1
+        else
+          scan_index += 1
+        end
       end
 
       current = cword < words.size ? words[cword] : ""
