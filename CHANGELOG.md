@@ -2,7 +2,9 @@
 
 All notable changes are documented here.
 
-## [Unreleased]
+## [2.0.1] - 2026-06-12
+
+Identical code to the final 2.0.0: the `v2.0.0` tag was re-pointed to include the `--version` support below, so `v2.0.0` and `v2.0.1` differ only in the version `shard.yml` declares (2.0.0 vs 2.0.1). This changelog entry itself landed after the `v2.0.1` tag and ships with the next release.
 
 ### Added
 
