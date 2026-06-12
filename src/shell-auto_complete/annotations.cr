@@ -10,4 +10,7 @@ module Shell::AutoComplete
 
   annotation PositionalsDef
   end
+
+  annotation OrderedFlagGroupDef
+  end
 end
