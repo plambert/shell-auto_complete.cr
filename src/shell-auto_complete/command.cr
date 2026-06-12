@@ -41,6 +41,53 @@ module Shell::AutoComplete
         {% end %}
       end
 
+      # The program name shown by --version and the version subcommand;
+      # set with the `tool_name` macro (a TOOL_NAME constant, inherited
+      # through parent:), defaulting to the command's name — itself
+      # defaulting to the basename of PROGRAM_NAME.
+      def self.version_name : String
+        \{% if ([@type] + @type.ancestors).any? { |owner_type| owner_type.has_constant?("TOOL_NAME") } %}
+          TOOL_NAME
+        \{% else %}
+          command_name
+        \{% end %}
+      end
+
+      # The version string shown by --version and the version subcommand.
+      # Resolution order: the `tool_version` macro's TOOL_VERSION constant
+      # (inherited through parent:); then the nearest VERSION constant
+      # visible from this class (the class itself, each enclosing namespace,
+      # the top level, or an inherited command) — emitted as a plain
+      # constant reference so Crystal's own lexical lookup picks the nearest
+      # one; finally the project's `shards version`, captured at compile
+      # time.
+      def self.version_string : String
+        \{% begin %}
+          \{% if ([@type] + @type.ancestors).any? { |owner_type| owner_type.has_constant?("TOOL_VERSION") } %}
+            TOOL_VERSION
+          \{% else %}
+            \{% version_const_found = @type.has_constant?("VERSION") || @top_level.has_constant?("VERSION") || @type.ancestors.any? { |owner_type| owner_type.has_constant?("VERSION") } %}
+            \{% unless version_const_found %}
+              \{% name_parts = @type.name.stringify.split("::") %}
+              \{% current_namespace = @top_level %}
+              \{% for name_part, part_index in name_parts %}
+                \{% if part_index < name_parts.size - 1 && current_namespace && current_namespace.has_constant?(name_part) %}
+                  \{% current_namespace = current_namespace.constant(name_part) %}
+                  \{% if current_namespace.is_a?(TypeNode) && current_namespace.has_constant?("VERSION") %}
+                    \{% version_const_found = true %}
+                  \{% end %}
+                \{% end %}
+              \{% end %}
+            \{% end %}
+            \{% if version_const_found %}
+              VERSION.to_s
+            \{% else %}
+              \{{ `shards version 2>/dev/null || echo unknown`.strip.stringify }}
+            \{% end %}
+          \{% end %}
+        \{% end %}
+      end
+
       # Builds this command's fully qualified path. With no `parent_prefix`
       # the command is the root, so its bare `command_name` is the whole path;
       # otherwise the parent's path is prepended (e.g. `"hf scrape"`).
@@ -1034,6 +1081,9 @@ module Shell::AutoComplete
             value_flag_tokens = ::Set(::String).new
             switch_flag_tokens = ::Set(::String){"--help", "-h", "--all-help"}
             value_flag_tokens << shell_completion_flag_name
+            \{% if !([@type] + @type.ancestors).any? { |owner_type| owner_type.has_constant?("VERSION_FLAG_DISABLED") } && !@type.constant("FLAG_REGISTRY_NAMES").includes?("--version") %}
+              switch_flag_tokens << "--version"
+            \{% end %}
             \{% for ivar in @type.instance_vars %}
               \{% if (fann = ivar.annotation(::Shell::AutoComplete::FlagDef)) && !@type.constant("OVERRIDDEN_FLAG_IVARS").includes?(ivar.name.stringify) %}
                 \{% is_switch = ivar.type.id.stringify == "Bool" || (ivar.type.union? && ivar.type.union_types.all? { |ut| ut == Nil || ut.id.stringify == "Bool" } && ivar.type.union_types.any? { |ut| ut.id.stringify == "Bool" }) %}
@@ -1132,6 +1182,15 @@ module Shell::AutoComplete
             stdout.puts help(parent_prefix)
             return
           end
+          # --version intercept: root level only, and only while no flag has
+          # claimed the spelling (a declared --version flag wins; the
+          # disable_version_flag macro turns it off without claiming it).
+          \{% if !([@type] + @type.ancestors).any? { |owner_type| owner_type.has_constant?("VERSION_FLAG_DISABLED") } && !@type.constant("FLAG_REGISTRY_NAMES").includes?("--version") %}
+            if parent_prefix.nil? && pre_double_dash.includes?("--version")
+              stdout.puts "#{version_name} #{version_string}"
+              return
+            end
+          \{% end %}
           # Immediate flags: print-reference-data-and-exit switches fire as
           # soon as their spelling appears before --, regardless of whether
           # the rest of the line would validate — like their callback-parser

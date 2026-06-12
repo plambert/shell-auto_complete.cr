@@ -190,6 +190,10 @@ end
   filters and `aliases:` (`{quiet: :warn}`) that resolve last-wins against real shortcuts.
 * **Introspection**: `flag_given?(:name)` distinguishes an explicit value from a default;
   `parsed_occurrences` is a raw, ordered log of every flag occurrence as typed.
+* **Version reporting**: `--version` prints `<name> <version>` (auto-disabled if you claim the
+  spelling yourself, or via `disable_version_flag`); `tool_name`/`tool_version` set the strings,
+  `enable_version_subcommand` adds a `version` subcommand, and the version defaults to the nearest
+  visible `VERSION` constant or the project's `shards version` at compile time.
 * **Help control**: `help_sections:` reorders sections, `group:` puts flags under their own heading,
   descriptions/headers/footers accept constant and method references, `immediate:` flags fire before
   full-line validation (`--list-formats` style).
