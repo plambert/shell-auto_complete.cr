@@ -55,7 +55,7 @@ module Shell::AutoComplete
         # Duplicate-name registry (issue #10): group spellings participate in
         # the same collision checks as flag declarations. Groups cannot be
         # overridden, so collisions are always errors.
-        group_index = @type.methods.select { |meth| meth.annotation(::Shell::AutoComplete::OrderedFlagGroupDef) }.size
+        group_index = ([@type] + @type.ancestors).map(&.methods).reduce([] of Def) { |acc, meths| acc + meths }.select { |meth| meth.annotation(::Shell::AutoComplete::OrderedFlagGroupDef) }.size
         handler_name = "__ordered_flag_group_handler_#{group_index}__"
         reg_names = @type.constant("FLAG_REGISTRY_NAMES")
         reg_owners = @type.constant("FLAG_REGISTRY_OWNERS")
