@@ -665,6 +665,7 @@ module Shell::AutoComplete
                 short:       \{{fann[:short]}}.as(::String?),
                 description: \{{fann[:description]}}.as(::String),
                 placeholder: \{{fann[:placeholder]}}.as(::String?),
+                group:       \{{fann[:group]}}.as(::String?),
               }
               \{% if (sc_conf = fann[:shortcut_flags]) && sc_conf.is_a?(NamedTupleLiteral) && (sc_aliases = sc_conf[:aliases]) %}
                 \{% for alias_key in sc_aliases.keys %}
@@ -676,6 +677,7 @@ module Shell::AutoComplete
                     short:       nil.as(::String?),
                     description: ("Alias for " + \{{fann[:canonical]}} + " " + \{{alias_target}}).as(::String),
                     placeholder: nil.as(::String?),
+                    group:       \{{fann[:group]}}.as(::String?),
                   }
                 \{% end %}
               \{% end %}
@@ -691,6 +693,7 @@ module Shell::AutoComplete
                 short:       nil.as(::String?),
                 description: \{{gann[:descriptions][member_idx]}}.as(::String),
                 placeholder: nil.as(::String?),
+                group:       \{{gann[:description]}}.as(::String?),
               }
             \{% end %}
           \{% end %}
@@ -719,6 +722,7 @@ module Shell::AutoComplete
         {% cmd_ann = @type.annotation(::Shell::AutoComplete::CommandDef) %}
         ::Shell::AutoComplete::Help.render(
           command_name:   command_name,
+          section_order:  {{ cmd_ann && cmd_ann[:help_sections] ? cmd_ann[:help_sections] : nil }}.as(::Array(::Symbol)?),
           description:    {{ cmd_ann && cmd_ann[:description] ? cmd_ann[:description] : "" }}.as(::String),
           flags:          flags,
           subcommands:    subcommands,
@@ -1019,16 +1023,45 @@ module Shell::AutoComplete
             stdout.puts help(parent_prefix)
             return
           end
+          # Intercepts respect the -- terminator, consistent with the parser:
+          # a literal "--help" after -- is a positional, not a help request.
+          pre_double_dash = (double_dash_index = argv.index("--")) ? argv[0...double_dash_index] : argv
           # --all-help intercept: only fires when this command has subcommands
-          if argv.includes?("--all-help") && !SUBCOMMANDS.empty?
+          if pre_double_dash.includes?("--all-help") && !SUBCOMMANDS.empty?
             stdout.puts all_help(parent_prefix)
             return
           end
           # --help / -h intercept at THIS level (no subcommand matched)
-          if argv.includes?("--help") || argv.includes?("-h")
+          if pre_double_dash.includes?("--help") || pre_double_dash.includes?("-h")
             stdout.puts help(parent_prefix)
             return
           end
+          # Immediate flags: print-reference-data-and-exit switches fire as
+          # soon as their spelling appears before --, regardless of whether
+          # the rest of the line would validate — like their callback-parser
+          # ancestors, which ran handlers during parse.
+          \{% for ivar in @type.instance_vars %}
+            \{% if (fann = ivar.annotation(::Shell::AutoComplete::FlagDef)) && !@type.constant("OVERRIDDEN_FLAG_IVARS").includes?(ivar.name.stringify) && fann[:immediate] %}
+              immediate_names_\{{ivar.name}} = [\{{fann[:canonical]}}] of ::String
+              \{% for alias_name in fann[:aliases] %}
+                immediate_names_\{{ivar.name}} << \{{alias_name}}
+              \{% end %}
+              \{% if fann[:short] %}
+                immediate_names_\{{ivar.name}} << \{{fann[:short]}}
+              \{% end %}
+              if pre_double_dash.any? { |dispatch_arg| immediate_names_\{{ivar.name}}.includes?(dispatch_arg) }
+                \{% if fann[:immediate].is_a?(BoolLiteral) %}
+                  \{% immediate_handler = "immediate_" + ivar.name.stringify %}
+                \{% else %}
+                  \{% immediate_handler = fann[:immediate].id.stringify %}
+                \{% end %}
+                immediate_inst_\{{ivar.name}} = new
+                immediate_inst_\{{ivar.name}}.\{{ivar.name}} = true
+                immediate_inst_\{{ivar.name}}.\{{immediate_handler.id}}
+                return immediate_inst_\{{ivar.name}}
+              end
+            \{% end %}
+          \{% end %}
           # Unknown subcommand rejection
           if !SUBCOMMANDS.empty? && !argv.empty?
             raise ::Shell::AutoComplete::ParseError.new("unknown subcommand: #{argv[0]}")
