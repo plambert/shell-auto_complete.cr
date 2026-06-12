@@ -50,13 +50,15 @@ module Shell::AutoComplete
               storage_elem = meth.return_type if meth.name.stringify == "__arg_transform"
             end
           end
-          elem_base = pos_elem_type.id.stringify.split("(")[0]
-          storage_elem_base = storage_elem.id.stringify.split("(")[0]
+          elem_base = pos_elem_type.id.stringify.split("(")[0].gsub(/\A::/, "")
+          storage_elem_base = storage_elem.id.stringify.split("(")[0].gsub(/\A::/, "")
           elem_remapped = elem_base != storage_elem_base
           # A remapped element type comes from the transformer's source file, so
           # qualify it against the user's namespace (issue #9). A non-remapped
-          # element is the user's own spelling and is respliced verbatim — it
-          # may be a path relative to their namespace.
+          # element resplices the user's own spelling (NOT the transformer's
+          # return-type node, which may be unqualified) — it may be a path
+          # relative to their namespace.
+          storage_elem = pos_elem_type unless elem_remapped
           storage_elem_str = storage_elem.stringify
           if elem_remapped && !(storage_elem_str.starts_with?("::") || storage_elem_str.starts_with?("("))
             storage_elem_str = "::" + storage_elem_str
@@ -116,14 +118,19 @@ module Shell::AutoComplete
             storage_inner = meth.return_type if meth.name.stringify == "__arg_transform"
           end
         end
-        decl_base = decl_inner.id.stringify.split("(")[0]
-        storage_base = storage_inner.id.stringify.split("(")[0]
+        decl_base = decl_inner.id.stringify.split("(")[0].gsub(/\A::/, "")
+        storage_base = storage_inner.id.stringify.split("(")[0].gsub(/\A::/, "")
         storage_remapped = decl_base != storage_base
         # A remapped storage type comes from the transformer's source file, so
         # qualify it against the user's namespace (issue #9). A non-remapped
-        # one is the user's own spelling and is respliced verbatim.
-        if storage_remapped && !(storage_inner.stringify.starts_with?("::") || storage_inner.stringify.starts_with?("("))
-          storage_inner = "::#{storage_inner}".id
+        # one resplices the user's own spelling (NOT the transformer's
+        # return-type node, which may be unqualified).
+        if storage_remapped
+          unless storage_inner.stringify.starts_with?("::") || storage_inner.stringify.starts_with?("(")
+            storage_inner = "::#{storage_inner}".id
+          end
+        else
+          storage_inner = decl_inner
         end
       %}
 
