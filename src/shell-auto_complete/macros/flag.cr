@@ -82,7 +82,69 @@ module Shell::AutoComplete
           end
         end
 
-        consumed_keys = [:transform_with, :validate_with, :negatable, :complete_with, :hidden, :shortcut_flags, :delimiter, :set_operations]
+        # ---- duplicate-name detection (issue #10) ----
+        # Collect every spelling this declaration produces, including generated
+        # `--no-` negations and enum shortcut switches, and check them against
+        # the per-command registry. `override: true` replaces the prior owning
+        # flag wholesale: its registry entries are tombstoned and its property
+        # is recorded so the generators skip it.
+        produced_names = [] of String
+        long_forms.each do |long_form|
+          produced_names << long_form.id.stringify
+        end
+        produced_names << short_form.id.stringify if short_form
+        negatable_opt = opts[:negatable] == nil ? true : opts[:negatable]
+        if decl_type.id.stringify == "Bool" && negatable_opt
+          produced_names << "--no-" + canonical.id.stringify.gsub(/\A--/, "")
+        end
+        if opts[:shortcut_flags] && sc_resolved
+          sc_resolved.constants.each do |case_const|
+            produced_names << "--" + case_const.stringify.underscore.tr("_", "-")
+          end
+        end
+
+        reg_names = @type.constant("FLAG_REGISTRY_NAMES")
+        reg_owners = @type.constant("FLAG_REGISTRY_OWNERS")
+        overridden_ivars = @type.constant("OVERRIDDEN_FLAG_IVARS")
+        var_name = decl.var.stringify
+
+        if opts[:override]
+          prior_owners = [] of String
+          produced_names.each do |produced|
+            (0...reg_names.size).each do |reg_idx|
+              if reg_names[reg_idx] == produced && !prior_owners.includes?(reg_owners[reg_idx])
+                prior_owners << reg_owners[reg_idx]
+              end
+            end
+          end
+          if prior_owners.empty?
+            raise "flag #{decl.var} has `override: true` but none of its names (#{produced_names.map(&.id).join(", ")}) match an existing flag on #{@type}"
+          end
+          if prior_owners.includes?(var_name)
+            raise "flag #{decl.var} overrides the flag bound to the same property; an overriding flag must use a new property name (the replaced property remains declared but is no longer bound)"
+          end
+          (0...reg_names.size).each do |reg_idx|
+            if prior_owners.includes?(reg_owners[reg_idx])
+              reg_names[reg_idx] = ""
+              reg_owners[reg_idx] = ""
+            end
+          end
+          prior_owners.each do |prior_owner|
+            overridden_ivars << prior_owner unless overridden_ivars.includes?(prior_owner)
+          end
+        end
+
+        produced_names.each do |produced|
+          (0...reg_names.size).each do |reg_idx|
+            if reg_names[reg_idx] == produced
+              raise "duplicate flag name #{produced.id} on #{@type}: already declared by flag `#{reg_owners[reg_idx].id}`; add `override: true` to replace the existing flag"
+            end
+          end
+          reg_names << produced
+          reg_owners << var_name
+        end
+
+        consumed_keys = [:transform_with, :validate_with, :negatable, :complete_with, :hidden, :shortcut_flags, :delimiter, :set_operations, :override]
         forwarded_pairs = [] of StringLiteral
         opts.each do |opt_key, opt_val|
           next if consumed_keys.includes?(opt_key)
