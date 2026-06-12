@@ -388,12 +388,18 @@ module Shell::AutoComplete
                 vs.each do |raw_v|
                   next unless raw_v
                   if raw_v.starts_with?("-")
-                    if key_match = raw_v.match(/\A-([A-Za-z0-9_][A-Za-z0-9_\-]*)\z/)
-                      accum_hash.delete(key_match[1])
+                    if key_match = raw_v.match(::Shell::AutoComplete::HashFlag::DELETE_RE)
+                      \{% if fann[:hash_operations] %}
+                        accum_hash.delete(key_match[1])
+                      \{% else %}
+                        raise ::Shell::AutoComplete::ParseError.new(\{{fann[:canonical]}} + ": deletion is disabled for this flag (hash_operations: false); use #{key_match[1]}=VALUE to assign")
+                      \{% end %}
+                    elsif raw_v.matches?(::Shell::AutoComplete::HashFlag::DELETE_ASSIGN_RE)
+                      raise ::Shell::AutoComplete::ParseError.new("invalid hash entry: #{raw_v} (use #{raw_v[1..]} to assign, or #{raw_v.partition('=')[0]} to delete)")
                     else
                       raise ::Shell::AutoComplete::ParseError.new("invalid hash entry: #{raw_v}")
                     end
-                  elsif kv_match = raw_v.match(/\A([A-Za-z0-9_][A-Za-z0-9_\-]*)=(.*)\z/m)
+                  elsif kv_match = raw_v.match(::Shell::AutoComplete::HashFlag::KEY_VALUE_RE)
                     begin
                       \{% if has_per_flag_transform %}
                         elem_value = self.\{{per_flag_transform_method.id}}(kv_match[2])
