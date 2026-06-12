@@ -191,6 +191,29 @@ module Shell::AutoComplete
           raise "collection flag #{decl.var} must state its splitting behavior: pass delimiter: \",\" (split each value on commas) or delimiter: nil (each occurrence is one element)"
         end
 
+        # immediate: marks a print-reference-data-and-exit switch (issue
+        # #21): dispatch invokes the designated handler as soon as the
+        # spelling appears (before full-line validation). `immediate: true`
+        # uses the convention `immediate_<flag name>`; a symbol names the
+        # handler method explicitly.
+        if opts[:immediate]
+          unless decl_is_switch_pre = (decl_type.id.stringify.gsub(/\A::/, "") == "Bool" || (decl_type.is_a?(Union) && decl_type.types.reject { |type_node| type_node.resolve == Nil }.size == 1 && decl_type.types.reject { |type_node| type_node.resolve == Nil }[0].resolve == Bool))
+            raise "immediate: is only valid on switch (Bool/Bool?) flags (flag #{decl.var})"
+          end
+          unless opts[:immediate].is_a?(BoolLiteral) || opts[:immediate].is_a?(SymbolLiteral)
+            raise "immediate: must be true or a symbol naming the handler method (flag #{decl.var})"
+          end
+        end
+
+        # group: places the flag under its own heading in help (issue #21).
+        if (group_opt = opts[:group]) && !group_opt.is_a?(StringLiteral) && !group_opt.is_a?(Path)
+          raise "group: must be a string literal or constant reference (flag #{decl.var})"
+        end
+        if group_opt.is_a?(Path)
+          resolved_group = group_opt.resolve?
+          group_opt = resolved_group if resolved_group.is_a?(StringLiteral)
+        end
+
         # ---- duplicate-name detection (issue #10) ----
         # Collect every spelling this declaration produces, including generated
         # `--no-` negations and enum shortcut switches, and check them against
@@ -268,7 +291,7 @@ module Shell::AutoComplete
           reg_owners << var_name
         end
 
-        consumed_keys = [:description, :placeholder, :transform_with, :validate_with, :negatable, :complete_with, :hidden, :shortcut_flags, :delimiter, :set_operations, :hash_operations, :override]
+        consumed_keys = [:description, :placeholder, :group, :immediate, :transform_with, :validate_with, :negatable, :complete_with, :hidden, :shortcut_flags, :delimiter, :set_operations, :hash_operations, :override]
         forwarded_pairs = [] of StringLiteral
         opts.each do |opt_key, opt_val|
           next if consumed_keys.includes?(opt_key)
@@ -373,6 +396,8 @@ module Shell::AutoComplete
         transformer_type: {% if storage_remapped %}{{ decl_inner }}{% else %}nil{% end %},
         complete_with: {{ opts[:complete_with] }},
         placeholder: {% if placeholder %}{{ placeholder }}{% else %}nil{% end %},
+        group: {% if group_opt %}{{ group_opt }}{% else %}nil{% end %},
+        immediate: {{ opts[:immediate] }},
       )]
       {% if storage_remapped %}
         {% if decl_nullable %}
