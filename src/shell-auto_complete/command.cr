@@ -658,6 +658,7 @@ module Shell::AutoComplete
                 aliases:     \{% if alias_list.empty? %}([] of ::String)\{% else %}\{{alias_list}}.map(&.as(::String))\{% end %},
                 short:       \{{fann[:short]}}.as(::String?),
                 description: \{{fann[:description]}}.as(::String),
+                placeholder: \{{fann[:placeholder]}}.as(::String?),
               }
               \{% if (sc_conf = fann[:shortcut_flags]) && sc_conf.is_a?(NamedTupleLiteral) && (sc_aliases = sc_conf[:aliases]) %}
                 \{% for alias_key in sc_aliases.keys %}
@@ -668,6 +669,7 @@ module Shell::AutoComplete
                     aliases:     ([] of ::String),
                     short:       nil.as(::String?),
                     description: ("Alias for " + \{{fann[:canonical]}} + " " + \{{alias_target}}).as(::String),
+                    placeholder: nil.as(::String?),
                   }
                 \{% end %}
               \{% end %}
@@ -682,6 +684,7 @@ module Shell::AutoComplete
                 aliases:     ([] of ::String),
                 short:       nil.as(::String?),
                 description: \{{gann[:descriptions][member_idx]}}.as(::String),
+                placeholder: nil.as(::String?),
               }
             \{% end %}
           \{% end %}
