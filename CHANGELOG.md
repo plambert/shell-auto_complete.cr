@@ -2,6 +2,12 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Added
+
+- `--version` support. Passing `--version` with no subcommand on the line prints `<name> <version>` and exits; the intercept fires only at the root command and only while no declared flag claims the `--version` spelling — declaring your own `--version` flag disables it automatically, and the `disable_version_flag` macro turns it off without claiming the spelling. The `tool_name` and `tool_version` macros set the two strings (no semantic-version parsing — plain strings); `enable_version_subcommand` adds a `version` subcommand printing the same line, listed in help and completion like any subcommand. When `tool_version` is not used, the version string defaults to the nearest `VERSION` constant visible from the command class (the class itself, each enclosing namespace, the top level, or an inherited command — resolved by Crystal's own constant lookup), falling back to the project's `shards version` captured at compile time. The name defaults to the command's name, itself defaulting to the basename of `PROGRAM_NAME`. Both resolve through `parent:` inheritance, and the resolved values are readable via `.version_name` / `.version_string`.
+
 ## [2.0.0] - 2026-06-12
 
 Major release closing issues #9–#22. Three breaking changes, marked below: required `delimiter:` on collection flags, unconsumed extra string literals as compile errors, and routing-behavior changes around subcommands. Everything else is additive.
