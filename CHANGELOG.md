@@ -2,7 +2,9 @@
 
 All notable changes are documented here.
 
-## [Unreleased]
+## [2.0.0] - 2026-06-12
+
+Major release closing issues #9–#22. Three breaking changes, marked below: required `delimiter:` on collection flags, unconsumed extra string literals as compile errors, and routing-behavior changes around subcommands. Everything else is additive.
 
 ### Added (flag inheritance, #22)
 
