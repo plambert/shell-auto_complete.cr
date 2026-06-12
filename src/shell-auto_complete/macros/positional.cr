@@ -33,7 +33,7 @@ module Shell::AutoComplete
 
         if set_delta
           # The bound value is the merged delta.
-          storage_collection = "Hash(String, Bool)"
+          storage_collection = "::Hash(::String, ::Bool)"
           elem_remapped = false
           pos_elem_type = nil
         else
@@ -53,7 +53,15 @@ module Shell::AutoComplete
           elem_base = pos_elem_type.id.stringify.split("(")[0]
           storage_elem_base = storage_elem.id.stringify.split("(")[0]
           elem_remapped = elem_base != storage_elem_base
-          storage_collection = container_base + "(" + storage_elem.stringify + ")"
+          # A remapped element type comes from the transformer's source file, so
+          # qualify it against the user's namespace (issue #9). A non-remapped
+          # element is the user's own spelling and is respliced verbatim — it
+          # may be a path relative to their namespace.
+          storage_elem_str = storage_elem.stringify
+          if elem_remapped && !(storage_elem_str.starts_with?("::") || storage_elem_str.starts_with?("("))
+            storage_elem_str = "::" + storage_elem_str
+          end
+          storage_collection = container_base + "(" + storage_elem_str + ")"
         end
       %}
 
@@ -111,6 +119,12 @@ module Shell::AutoComplete
         decl_base = decl_inner.id.stringify.split("(")[0]
         storage_base = storage_inner.id.stringify.split("(")[0]
         storage_remapped = decl_base != storage_base
+        # A remapped storage type comes from the transformer's source file, so
+        # qualify it against the user's namespace (issue #9). A non-remapped
+        # one is the user's own spelling and is respliced verbatim.
+        if storage_remapped && !(storage_inner.stringify.starts_with?("::") || storage_inner.stringify.starts_with?("("))
+          storage_inner = "::#{storage_inner}".id
+        end
       %}
 
       # Guard: positional cannot coexist with subcommands

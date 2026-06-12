@@ -2,6 +2,12 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Fixed
+
+- Generated code now emits fully qualified type paths, so commands defined inside a namespace that shadows a top-level constant (the standard `Log = ::Log.for self` pattern, a local `Path` constant, etc.) compile and parse correctly. Resolved types spliced by the parse/help/completion generators get a `::` prefix; storage-remapped property types (e.g. `File`/`Dir` → `Path`, whose spelling comes from the transformer's own source file) are qualified the same way. User-written type spellings are still respliced verbatim, so relative paths that resolve in the user's namespace keep working. (#9)
+
 ## [1.2.0] - 2026-06-11
 
 ### Added

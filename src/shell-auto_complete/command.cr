@@ -69,7 +69,7 @@ module Shell::AutoComplete
         \{% for ivar in @type.instance_vars %}
           \{% if fann = ivar.annotation(::Shell::AutoComplete::FlagDef) %}
             \{% if ivar.type.id.stringify == "Bool" %}
-              pos_names_\{{ivar.name}} = [\{{fann[:canonical]}}] of String
+              pos_names_\{{ivar.name}} = [\{{fann[:canonical]}}] of ::String
               \{% if fann[:short] %}
                 pos_names_\{{ivar.name}} << \{{fann[:short]}}
               \{% end %}
@@ -89,7 +89,7 @@ module Shell::AutoComplete
                 )
               \{% end %}
             \{% else %}
-              names_\{{ivar.name}} = [\{{fann[:canonical]}}] of String
+              names_\{{ivar.name}} = [\{{fann[:canonical]}}] of ::String
               \{% for alias_name in fann[:aliases] %}
                 names_\{{ivar.name}} << \{{alias_name}}
               \{% end %}
@@ -131,7 +131,8 @@ module Shell::AutoComplete
             \{% elsif ivar.type.stringify.starts_with?("Array(") %}
               if vs = result[:values][\{{fann[:canonical]}}]?
                 \{% elem_type = ivar.type.type_vars[0] %}
-                accum_arr = [] of \{{elem_type}}
+                \{% elem_type_q = (elem_type.stringify.starts_with?("::") || elem_type.stringify.starts_with?("(")) ? elem_type : "::#{elem_type}".id %}
+                accum_arr = [] of \{{elem_type_q}}
                 vs.each do |raw_v|
                   next unless raw_v
                   \{% if fann[:delimiter].is_a?(NilLiteral) %}
@@ -140,7 +141,7 @@ module Shell::AutoComplete
                     parts_for_arr = raw_v.split(\{{fann[:delimiter]}})
                   \{% end %}
                   parts_for_arr.each do |part|
-                    accum_arr << \{{elem_type}}.__arg_transform(part, **\{{fann[:forwarded_opts]}})
+                    accum_arr << \{{elem_type_q}}.__arg_transform(part, **\{{fann[:forwarded_opts]}})
                   end
                 end
                 inst.\{{ivar.name}} = accum_arr
@@ -148,7 +149,8 @@ module Shell::AutoComplete
             \{% elsif ivar.type.stringify.starts_with?("Set(") %}
               if vs = result[:values][\{{fann[:canonical]}}]?
                 \{% elem_type = ivar.type.type_vars[0] %}
-                accum_set = Set(\{{elem_type}}).new
+                \{% elem_type_q = (elem_type.stringify.starts_with?("::") || elem_type.stringify.starts_with?("(")) ? elem_type : "::#{elem_type}".id %}
+                accum_set = ::Set(\{{elem_type_q}}).new
                 vs.each do |raw_v|
                   next unless raw_v
                   \{% if fann[:delimiter].is_a?(NilLiteral) %}
@@ -159,14 +161,14 @@ module Shell::AutoComplete
                   parts_for_set.each do |part|
                     \{% if fann[:set_operations] %}
                       if part.starts_with?("-")
-                        accum_set.delete(\{{elem_type}}.__arg_transform(part[1..], **\{{fann[:forwarded_opts]}}).as(\{{elem_type}}))
+                        accum_set.delete(\{{elem_type_q}}.__arg_transform(part[1..], **\{{fann[:forwarded_opts]}}).as(\{{elem_type_q}}))
                       elsif part.starts_with?("+")
-                        accum_set.add(\{{elem_type}}.__arg_transform(part[1..], **\{{fann[:forwarded_opts]}}).as(\{{elem_type}}))
+                        accum_set.add(\{{elem_type_q}}.__arg_transform(part[1..], **\{{fann[:forwarded_opts]}}).as(\{{elem_type_q}}))
                       else
-                        accum_set.add(\{{elem_type}}.__arg_transform(part, **\{{fann[:forwarded_opts]}}).as(\{{elem_type}}))
+                        accum_set.add(\{{elem_type_q}}.__arg_transform(part, **\{{fann[:forwarded_opts]}}).as(\{{elem_type_q}}))
                       end
                     \{% else %}
-                      accum_set.add(\{{elem_type}}.__arg_transform(part, **\{{fann[:forwarded_opts]}}).as(\{{elem_type}}))
+                      accum_set.add(\{{elem_type_q}}.__arg_transform(part, **\{{fann[:forwarded_opts]}}).as(\{{elem_type_q}}))
                     \{% end %}
                   end
                 end
@@ -175,7 +177,8 @@ module Shell::AutoComplete
             \{% elsif ivar.type.stringify.starts_with?("Hash(") %}
               if vs = result[:values][\{{fann[:canonical]}}]?
                 \{% val_type = ivar.type.type_vars[1] %}
-                accum_hash = {} of String => \{{val_type}}
+                \{% val_type_q = (val_type.stringify.starts_with?("::") || val_type.stringify.starts_with?("(")) ? val_type : "::#{val_type}".id %}
+                accum_hash = {} of ::String => \{{val_type_q}}
                 vs.each do |raw_v|
                   next unless raw_v
                   if raw_v.starts_with?("-")
@@ -185,7 +188,7 @@ module Shell::AutoComplete
                       raise ::Shell::AutoComplete::ParseError.new("invalid hash entry: #{raw_v}")
                     end
                   elsif kv_match = raw_v.match(/\A([A-Za-z0-9_][A-Za-z0-9_\-]*)=(.*)\z/m)
-                    accum_hash[kv_match[1]] = \{{val_type}}.__arg_transform(kv_match[2], **\{{fann[:forwarded_opts]}})
+                    accum_hash[kv_match[1]] = \{{val_type_q}}.__arg_transform(kv_match[2], **\{{fann[:forwarded_opts]}})
                   else
                     raise ::Shell::AutoComplete::ParseError.new("invalid hash entry: #{raw_v}")
                   end
@@ -198,6 +201,7 @@ module Shell::AutoComplete
                   if v = raw_last
                     \{% is_nullable = ivar.type.union? && ivar.type.union_types.includes?(Nil) %}
                     \{% inner_type = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
+                    \{% inner_type_q = ((inner_type.stringify.starts_with?("::") || inner_type.stringify.starts_with?("(")) ? inner_type : "::#{inner_type}".id) %}
                     \{% inner_is_string = inner_type.id.stringify == "String" %}
                     # Nillability via empty string: an explicit empty value on a
                     # nullable non-String type resets the property to nil.
@@ -215,7 +219,7 @@ module Shell::AutoComplete
                     \{% elsif fann[:transformer_type] %}
                       transformed_value = \{{fann[:transformer_type]}}.__arg_transform(v, **\{{fann[:forwarded_opts]}})
                     \{% else %}
-                      transformed_value = \{{inner_type}}.__arg_transform(v, **\{{fann[:forwarded_opts]}})
+                      transformed_value = \{{inner_type_q}}.__arg_transform(v, **\{{fann[:forwarded_opts]}})
                     \{% end %}
                     inst.\{{ivar.name}} = transformed_value
                     \{% inner_type_v = inner_type %}
@@ -226,7 +230,7 @@ module Shell::AutoComplete
                     \{% elsif vw = fann[:validate_with] %}
                       result_v = self.\{{vw.id}}(transformed_value)
                     \{% elsif inner_type_v.resolve.class.methods.any? { |m| m.name.stringify == "__arg_validate" } %}
-                      result_v = \{{inner_type_v}}.__arg_validate(transformed_value, **\{{fann[:forwarded_opts]}})
+                      result_v = \{{inner_type_q}}.__arg_validate(transformed_value, **\{{fann[:forwarded_opts]}})
                     \{% else %}
                       result_v = true
                     \{% end %}
@@ -303,15 +307,18 @@ module Shell::AutoComplete
                 transformed_pos_\{{ivar.name}} = \{{tt}}.__arg_transform(raw_pos_\{{ivar.name}})
               \{% else %}
                 \{% pos_inner_type = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
-                transformed_pos_\{{ivar.name}} = \{{pos_inner_type}}.__arg_transform(raw_pos_\{{ivar.name}})
+                \{% pos_inner_type_q = ((pos_inner_type.stringify.starts_with?("::") || pos_inner_type.stringify.starts_with?("(")) ? pos_inner_type : "::#{pos_inner_type}".id) %}
+                transformed_pos_\{{ivar.name}} = \{{pos_inner_type_q}}.__arg_transform(raw_pos_\{{ivar.name}})
               \{% end %}
               inst.\{{ivar.name}} = transformed_pos_\{{ivar.name}}
               \{% if vw = pann[:validate_with] %}
                 result_v_pos_\{{ivar.name}} = self.\{{vw.id}}(transformed_pos_\{{ivar.name}})
               \{% else %}
-                \{% pos_inner_type_v = pann[:transformer_type] || (ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type) %}
+                \{% pos_inner_type_v_res = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
+                \{% pos_inner_type_v = pann[:transformer_type] || pos_inner_type_v_res %}
+                \{% pos_inner_type_v_q = pann[:transformer_type] || ((pos_inner_type_v_res.stringify.starts_with?("::") || pos_inner_type_v_res.stringify.starts_with?("(")) ? pos_inner_type_v_res : "::#{pos_inner_type_v_res}".id) %}
                 \{% if pos_inner_type_v.resolve.class.methods.any? { |m| m.name.stringify == "__arg_validate" } %}
-                  result_v_pos_\{{ivar.name}} = \{{pos_inner_type_v}}.__arg_validate(transformed_pos_\{{ivar.name}}, **\{{pann[:forwarded_opts]}})
+                  result_v_pos_\{{ivar.name}} = \{{pos_inner_type_v_q}}.__arg_validate(transformed_pos_\{{ivar.name}}, **\{{pann[:forwarded_opts]}})
                 \{% else %}
                   result_v_pos_\{{ivar.name}} = true
                 \{% end %}
@@ -331,18 +338,19 @@ module Shell::AutoComplete
             \{% if variadic_ann[:set_delta] %}
               # SetDelta: merge each `+name`/`-name`/`name` token's single-entry
               # delta into one Hash(String, Bool); last write wins on a repeat.
-              variadic_collected_\{{variadic_ivar.name}} = Hash(String, Bool).new
+              variadic_collected_\{{variadic_ivar.name}} = ::Hash(::String, ::Bool).new
               while positional_stack.size > \{{trailing_ivars.size}}
                 raw_var_tok = positional_stack.shift
                 variadic_collected_\{{variadic_ivar.name}}.merge!(::Shell::AutoComplete::Types::SetDelta.__arg_transform(raw_var_tok))
               end
             \{% else %}
               \{% var_storage_type = variadic_ivar.type.type_vars[0] %}
-              \{% var_transform_type = variadic_ann[:transformer_type] || var_storage_type %}
-              variadic_collected_\{{variadic_ivar.name}} = [] of \{{var_storage_type}}
+              \{% var_storage_type_q = ((var_storage_type.stringify.starts_with?("::") || var_storage_type.stringify.starts_with?("(")) ? var_storage_type : "::#{var_storage_type}".id) %}
+              \{% var_transform_type_q = variadic_ann[:transformer_type] || var_storage_type_q %}
+              variadic_collected_\{{variadic_ivar.name}} = [] of \{{var_storage_type_q}}
               while positional_stack.size > \{{trailing_ivars.size}}
                 raw_var_tok = positional_stack.shift
-                variadic_collected_\{{variadic_ivar.name}} << \{{var_transform_type}}.__arg_transform(raw_var_tok)
+                variadic_collected_\{{variadic_ivar.name}} << \{{var_transform_type_q}}.__arg_transform(raw_var_tok)
               end
             \{% end %}
             \{% var_actual_min = variadic_ann[:min] %}
@@ -374,15 +382,18 @@ module Shell::AutoComplete
                 transformed_pos_\{{ivar.name}} = \{{tt}}.__arg_transform(raw_pos_\{{ivar.name}})
               \{% else %}
                 \{% pos_inner_type = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
-                transformed_pos_\{{ivar.name}} = \{{pos_inner_type}}.__arg_transform(raw_pos_\{{ivar.name}})
+                \{% pos_inner_type_q = ((pos_inner_type.stringify.starts_with?("::") || pos_inner_type.stringify.starts_with?("(")) ? pos_inner_type : "::#{pos_inner_type}".id) %}
+                transformed_pos_\{{ivar.name}} = \{{pos_inner_type_q}}.__arg_transform(raw_pos_\{{ivar.name}})
               \{% end %}
               inst.\{{ivar.name}} = transformed_pos_\{{ivar.name}}
               \{% if vw = pann[:validate_with] %}
                 result_v_pos_\{{ivar.name}} = self.\{{vw.id}}(transformed_pos_\{{ivar.name}})
               \{% else %}
-                \{% pos_inner_type_v = pann[:transformer_type] || (ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type) %}
+                \{% pos_inner_type_v_res = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
+                \{% pos_inner_type_v = pann[:transformer_type] || pos_inner_type_v_res %}
+                \{% pos_inner_type_v_q = pann[:transformer_type] || ((pos_inner_type_v_res.stringify.starts_with?("::") || pos_inner_type_v_res.stringify.starts_with?("(")) ? pos_inner_type_v_res : "::#{pos_inner_type_v_res}".id) %}
                 \{% if pos_inner_type_v.resolve.class.methods.any? { |m| m.name.stringify == "__arg_validate" } %}
-                  result_v_pos_\{{ivar.name}} = \{{pos_inner_type_v}}.__arg_validate(transformed_pos_\{{ivar.name}}, **\{{pann[:forwarded_opts]}})
+                  result_v_pos_\{{ivar.name}} = \{{pos_inner_type_v_q}}.__arg_validate(transformed_pos_\{{ivar.name}}, **\{{pann[:forwarded_opts]}})
                 \{% else %}
                   result_v_pos_\{{ivar.name}} = true
                 \{% end %}
@@ -409,10 +420,10 @@ module Shell::AutoComplete
             \{% unless fann[:hidden] %}
               \{% alias_list = fann[:aliases] %}
               flags << {
-                canonical:   \{{fann[:canonical]}}.as(String),
-                aliases:     \{% if alias_list.empty? %}([] of String)\{% else %}\{{alias_list}}.map(&.as(String))\{% end %},
-                short:       \{{fann[:short]}}.as(String?),
-                description: \{{fann[:description]}}.as(String),
+                canonical:   \{{fann[:canonical]}}.as(::String),
+                aliases:     \{% if alias_list.empty? %}([] of ::String)\{% else %}\{{alias_list}}.map(&.as(::String))\{% end %},
+                short:       \{{fann[:short]}}.as(::String?),
+                description: \{{fann[:description]}}.as(::String),
               }
             \{% end %}
           \{% end %}
@@ -423,16 +434,16 @@ module Shell::AutoComplete
           \{% if pann = ivar.annotation(::Shell::AutoComplete::PositionalDef) %}
             \{% unless pann[:hidden] %}
               positionals << {
-                name:        \{{ivar.name.stringify}}.as(String),
-                description: \{{pann[:description]}}.as(String),
+                name:        \{{ivar.name.stringify}}.as(::String),
+                description: \{{pann[:description]}}.as(::String),
                 variadic:    false,
               }
             \{% end %}
           \{% elsif vann = ivar.annotation(::Shell::AutoComplete::PositionalsDef) %}
             \{% unless vann[:hidden] %}
               positionals << {
-                name:        \{{ivar.name.stringify}}.as(String),
-                description: \{{vann[:description]}}.as(String),
+                name:        \{{ivar.name.stringify}}.as(::String),
+                description: \{{vann[:description]}}.as(::String),
                 variadic:    true,
               }
             \{% end %}
@@ -441,13 +452,13 @@ module Shell::AutoComplete
         {% cmd_ann = @type.annotation(::Shell::AutoComplete::CommandDef) %}
         ::Shell::AutoComplete::Help.render(
           command_name:   command_name,
-          description:    {{ cmd_ann && cmd_ann[:description] ? cmd_ann[:description] : "" }}.as(String),
+          description:    {{ cmd_ann && cmd_ann[:description] ? cmd_ann[:description] : "" }}.as(::String),
           flags:          flags,
           subcommands:    subcommands,
           positionals:    positionals,
-          header:         {{ cmd_ann && cmd_ann[:header] ? cmd_ann[:header] : nil }}.as(String?),
-          footer:         {{ cmd_ann && cmd_ann[:footer] ? cmd_ann[:footer] : nil }}.as(String?),
-          usage:          {{ cmd_ann && cmd_ann[:usage] ? cmd_ann[:usage] : nil }}.as(String?),
+          header:         {{ cmd_ann && cmd_ann[:header] ? cmd_ann[:header] : nil }}.as(::String?),
+          footer:         {{ cmd_ann && cmd_ann[:footer] ? cmd_ann[:footer] : nil }}.as(::String?),
+          usage:          {{ cmd_ann && cmd_ann[:usage] ? cmd_ann[:usage] : nil }}.as(::String?),
           qualified_name: qualified_name(parent_prefix),
         )
       end
@@ -484,7 +495,7 @@ module Shell::AutoComplete
       end
 
       def self.completion_candidates(words : Array(String), cword : Int32, current : String, prev : String) : Array(String)
-        result = [] of String
+        result = [] of ::String
 
         # Subcommand position: cword == 1 and subcommands exist.
         \{% if @type.has_constant?("SUBCOMMANDS") %}
@@ -502,7 +513,7 @@ module Shell::AutoComplete
           \{% if fann = ivar.annotation(::Shell::AutoComplete::FlagDef) %}
             \{% inner_type = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
             \{% if inner_type.resolve.annotation(::Flags) %}
-              all_names_\{{ivar.name}} = [\{{fann[:canonical]}}] of String
+              all_names_\{{ivar.name}} = [\{{fann[:canonical]}}] of ::String
               \{% for alias_name in fann[:aliases] %}
                 all_names_\{{ivar.name}} << \{{alias_name}}
               \{% end %}
@@ -584,7 +595,7 @@ module Shell::AutoComplete
           %}
           \{% if !p_leading.empty? || p_variadic %}
             unless current.starts_with?("-")
-              pos_value_flags = Set(String).new
+              pos_value_flags = ::Set(::String).new
               \{% for ivar in @type.instance_vars %}
                 \{% if fann = ivar.annotation(::Shell::AutoComplete::FlagDef) %}
                   \{% if ivar.type.id.stringify != "Bool" %}
@@ -603,14 +614,16 @@ module Shell::AutoComplete
                 \{% for i in 0...p_leading.size %}
                   \{% pivar = p_leading[i] %}
                   \{% pann = pivar.annotation(::Shell::AutoComplete::PositionalDef) %}
-                  \{% p_inner = pann[:transformer_type] || (pivar.type.union? ? pivar.type.union_types.reject { |t| t == Nil }[0] : pivar.type) %}
+                  \{% p_inner_res = pivar.type.union? ? pivar.type.union_types.reject { |t| t == Nil }[0] : pivar.type %}
+                  \{% p_inner = pann[:transformer_type] || p_inner_res %}
+                  \{% p_inner_q = pann[:transformer_type] || ((p_inner_res.stringify.starts_with?("::") || p_inner_res.stringify.starts_with?("(")) ? p_inner_res : "::#{p_inner_res}".id) %}
                   if pos_slot == \{{i}}
                     \{% if cw = pann[:complete_with] %}
                       pos_ctx = ::Shell::AutoComplete::CompletionContext.new(words: words, cword: cword)
                       self.\{{cw.id}}(pos_ctx).each { |candidate| result << candidate }
                       return result
                     \{% elsif p_inner.resolve.class.methods.any? { |m| m.name.stringify == "__arg_complete" } %}
-                      \{{p_inner}}.__arg_complete(current).each { |candidate| result << candidate }
+                      \{{p_inner_q}}.__arg_complete(current).each { |candidate| result << candidate }
                       return result
                     \{% end %}
                   end
@@ -620,10 +633,13 @@ module Shell::AutoComplete
                   \{% v_str = p_variadic.type.stringify %}
                   \{% if vann[:transformer_type] %}
                     \{% v_inner = vann[:transformer_type] %}
+                    \{% v_inner_q = v_inner %}
                   \{% elsif v_str.starts_with?("Hash(") %}
                     \{% v_inner = p_variadic.type.type_vars[1] %}
+                    \{% v_inner_q = ((v_inner.stringify.starts_with?("::") || v_inner.stringify.starts_with?("(")) ? v_inner : "::#{v_inner}".id) %}
                   \{% else %}
                     \{% v_inner = p_variadic.type.type_vars[0] %}
+                    \{% v_inner_q = ((v_inner.stringify.starts_with?("::") || v_inner.stringify.starts_with?("(")) ? v_inner : "::#{v_inner}".id) %}
                   \{% end %}
                   if pos_slot >= \{{p_leading.size}}
                     \{% if cw = vann[:complete_with] %}
@@ -631,7 +647,7 @@ module Shell::AutoComplete
                       self.\{{cw.id}}(var_ctx).each { |candidate| result << candidate }
                       return result
                     \{% elsif v_inner.resolve.class.methods.any? { |m| m.name.stringify == "__arg_complete" } %}
-                      \{{v_inner}}.__arg_complete(current).each { |candidate| result << candidate }
+                      \{{v_inner_q}}.__arg_complete(current).each { |candidate| result << candidate }
                       return result
                     \{% end %}
                   end
