@@ -107,6 +107,10 @@ module Shell::AutoComplete
         decl_base = decl_inner.id.stringify.split("(")[0]
         storage_base = storage_inner.id.stringify.split("(")[0]
         storage_remapped = decl_base != storage_base
+        # A remapped storage type comes from the transformer's own source file
+        # (its __arg_transform return type), so it must be spliced fully
+        # qualified — the user's namespace may shadow it (issue #9).
+        storage_inner_q = (storage_inner.stringify.starts_with?("::") || storage_inner.stringify.starts_with?("(")) ? storage_inner : "::#{storage_inner}".id
       %}
 
       @[::Shell::AutoComplete::FlagDef(
@@ -127,9 +131,9 @@ module Shell::AutoComplete
       )]
       {% if storage_remapped %}
         {% if decl_nullable %}
-          property {{ decl.var }} : {{ storage_inner }}?
+          property {{ decl.var }} : {{ storage_inner_q }}?
         {% else %}
-          property {{ decl.var }} : {{ storage_inner }}
+          property {{ decl.var }} : {{ storage_inner_q }}
         {% end %}
       {% else %}
         property {{ decl }}
