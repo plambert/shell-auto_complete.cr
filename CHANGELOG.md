@@ -6,6 +6,8 @@ All notable changes are documented here.
 
 ### Added
 
+- `parsed_occurrences` on every command instance: a raw, ordered log of each flag occurrence matched during parse, as `Array({String, String?})` — the spelling exactly as typed (dashes kept, aliases not canonicalized) and the raw value consumed from argv or after `=` (`nil` for switches and forced-value shortcut flags). Positionals are not logged; unknown flags never appear (parse rejects them first). Enables audit logging, re-emitting an equivalent command line, and order-sensitive resolution in `run`. (#11)
+
 - Compile-time duplicate flag-name detection. Every spelling a `flag` declaration produces — canonical, aliases, short form, the generated `--no-` negation, and enum `shortcut_flags:` switches — registers in a per-command registry, and a collision is now a compile error naming both flags instead of undefined behavior (previously the first declaration silently won at parse time while help showed both). (#10)
 - `override: true` on `flag` for intentional redefinition (the mixin-override case). The overriding declaration replaces the prior flag wholesale: all of the replaced flag's spellings are freed, and parse, help, and completion follow the replacement. The overriding flag must bind a new property; the replaced property remains declared but is no longer set by parsing. (#10)
 
