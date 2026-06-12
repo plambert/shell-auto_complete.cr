@@ -255,6 +255,12 @@ module Shell::AutoComplete
               if vs = result[:values][\{{fann[:canonical]}}]?
                 \{% elem_type = ivar.type.type_vars[0] %}
                 \{% elem_type_q = (elem_type.stringify.starts_with?("::") || elem_type.stringify.starts_with?("(")) ? elem_type : "::#{elem_type}".id %}
+                \{% per_flag_transform_method = "__arg_transform_" + ivar.name.stringify %}
+                \{% has_per_flag_transform = @type.class.methods.any? { |m| m.name.stringify == per_flag_transform_method } %}
+                \{% per_flag_validate_method = "__arg_validate_" + ivar.name.stringify %}
+                \{% has_per_flag_validate = @type.class.methods.any? { |m| m.name.stringify == per_flag_validate_method } %}
+                \{% elem_tw = fann[:transform_with] %}
+                \{% elem_vw = fann[:validate_with] %}
                 accum_arr = [] of \{{elem_type_q}}
                 vs.each do |raw_v|
                   next unless raw_v
@@ -264,7 +270,35 @@ module Shell::AutoComplete
                     parts_for_arr = raw_v.split(\{{fann[:delimiter]}})
                   \{% end %}
                   parts_for_arr.each do |part|
-                    accum_arr << \{{elem_type_q}}.__arg_transform(part, **\{{fann[:forwarded_opts]}})
+                    begin
+                      \{% if has_per_flag_transform %}
+                        elem_value = self.\{{per_flag_transform_method.id}}(part)
+                      \{% elsif elem_tw %}
+                        elem_value = self.\{{elem_tw.id}}(part)
+                      \{% else %}
+                        elem_value = \{{elem_type_q}}.__arg_transform(part, **\{{fann[:forwarded_opts]}})
+                      \{% end %}
+                    rescue elem_error : ::ArgumentError
+                      raise ::Shell::AutoComplete::ParseError.new(\{{fann[:canonical]}} + ": " + (elem_error.message || "invalid value"))
+                    end
+                    \{% if has_per_flag_validate %}
+                      elem_check = self.\{{per_flag_validate_method.id}}(elem_value)
+                    \{% elsif elem_vw %}
+                      elem_check = self.\{{elem_vw.id}}(elem_value)
+                    \{% elsif elem_type.resolve.class.methods.any? { |m| m.name.stringify == "__arg_validate" } %}
+                      elem_check = \{{elem_type_q}}.__arg_validate(elem_value, **\{{fann[:forwarded_opts]}})
+                    \{% else %}
+                      elem_check = true
+                    \{% end %}
+                    case elem_check
+                    when true
+                      # ok
+                    when ::String
+                      raise ::Shell::AutoComplete::ParseError.new(\{{fann[:canonical]}} + ": " + elem_check.as(::String))
+                    when false
+                      raise ::Shell::AutoComplete::ParseError.new(\{{fann[:canonical]}} + ": not a valid \{{ivar.name}}")
+                    end
+                    accum_arr << elem_value
                   end
                 end
                 inst.\{{ivar.name}} = accum_arr
@@ -273,6 +307,12 @@ module Shell::AutoComplete
               if vs = result[:values][\{{fann[:canonical]}}]?
                 \{% elem_type = ivar.type.type_vars[0] %}
                 \{% elem_type_q = (elem_type.stringify.starts_with?("::") || elem_type.stringify.starts_with?("(")) ? elem_type : "::#{elem_type}".id %}
+                \{% per_flag_transform_method = "__arg_transform_" + ivar.name.stringify %}
+                \{% has_per_flag_transform = @type.class.methods.any? { |m| m.name.stringify == per_flag_transform_method } %}
+                \{% per_flag_validate_method = "__arg_validate_" + ivar.name.stringify %}
+                \{% has_per_flag_validate = @type.class.methods.any? { |m| m.name.stringify == per_flag_validate_method } %}
+                \{% elem_tw = fann[:transform_with] %}
+                \{% elem_vw = fann[:validate_with] %}
                 accum_set = ::Set(\{{elem_type_q}}).new
                 vs.each do |raw_v|
                   next unless raw_v
@@ -284,15 +324,52 @@ module Shell::AutoComplete
                   parts_for_set.each do |part|
                     \{% if fann[:set_operations] %}
                       if part.starts_with?("-")
-                        accum_set.delete(\{{elem_type_q}}.__arg_transform(part[1..], **\{{fann[:forwarded_opts]}}).as(\{{elem_type_q}}))
+                        set_op_delete = true
+                        set_payload = part[1..]
                       elsif part.starts_with?("+")
-                        accum_set.add(\{{elem_type_q}}.__arg_transform(part[1..], **\{{fann[:forwarded_opts]}}).as(\{{elem_type_q}}))
+                        set_op_delete = false
+                        set_payload = part[1..]
                       else
-                        accum_set.add(\{{elem_type_q}}.__arg_transform(part, **\{{fann[:forwarded_opts]}}).as(\{{elem_type_q}}))
+                        set_op_delete = false
+                        set_payload = part
                       end
                     \{% else %}
-                      accum_set.add(\{{elem_type_q}}.__arg_transform(part, **\{{fann[:forwarded_opts]}}).as(\{{elem_type_q}}))
+                      set_op_delete = false
+                      set_payload = part
                     \{% end %}
+                    begin
+                      \{% if has_per_flag_transform %}
+                        elem_value = self.\{{per_flag_transform_method.id}}(set_payload)
+                      \{% elsif elem_tw %}
+                        elem_value = self.\{{elem_tw.id}}(set_payload)
+                      \{% else %}
+                        elem_value = \{{elem_type_q}}.__arg_transform(set_payload, **\{{fann[:forwarded_opts]}})
+                      \{% end %}
+                    rescue elem_error : ::ArgumentError
+                      raise ::Shell::AutoComplete::ParseError.new(\{{fann[:canonical]}} + ": " + (elem_error.message || "invalid value"))
+                    end
+                    if set_op_delete
+                      accum_set.delete(elem_value.as(\{{elem_type_q}}))
+                    else
+                      \{% if has_per_flag_validate %}
+                        elem_check = self.\{{per_flag_validate_method.id}}(elem_value)
+                      \{% elsif elem_vw %}
+                        elem_check = self.\{{elem_vw.id}}(elem_value)
+                      \{% elsif elem_type.resolve.class.methods.any? { |m| m.name.stringify == "__arg_validate" } %}
+                        elem_check = \{{elem_type_q}}.__arg_validate(elem_value, **\{{fann[:forwarded_opts]}})
+                      \{% else %}
+                        elem_check = true
+                      \{% end %}
+                      case elem_check
+                      when true
+                        # ok
+                      when ::String
+                        raise ::Shell::AutoComplete::ParseError.new(\{{fann[:canonical]}} + ": " + elem_check.as(::String))
+                      when false
+                        raise ::Shell::AutoComplete::ParseError.new(\{{fann[:canonical]}} + ": not a valid \{{ivar.name}}")
+                      end
+                      accum_set.add(elem_value.as(\{{elem_type_q}}))
+                    end
                   end
                 end
                 inst.\{{ivar.name}} = accum_set
@@ -301,6 +378,12 @@ module Shell::AutoComplete
               if vs = result[:values][\{{fann[:canonical]}}]?
                 \{% val_type = ivar.type.type_vars[1] %}
                 \{% val_type_q = (val_type.stringify.starts_with?("::") || val_type.stringify.starts_with?("(")) ? val_type : "::#{val_type}".id %}
+                \{% per_flag_transform_method = "__arg_transform_" + ivar.name.stringify %}
+                \{% has_per_flag_transform = @type.class.methods.any? { |m| m.name.stringify == per_flag_transform_method } %}
+                \{% per_flag_validate_method = "__arg_validate_" + ivar.name.stringify %}
+                \{% has_per_flag_validate = @type.class.methods.any? { |m| m.name.stringify == per_flag_validate_method } %}
+                \{% elem_tw = fann[:transform_with] %}
+                \{% elem_vw = fann[:validate_with] %}
                 accum_hash = {} of ::String => \{{val_type_q}}
                 vs.each do |raw_v|
                   next unless raw_v
@@ -311,7 +394,35 @@ module Shell::AutoComplete
                       raise ::Shell::AutoComplete::ParseError.new("invalid hash entry: #{raw_v}")
                     end
                   elsif kv_match = raw_v.match(/\A([A-Za-z0-9_][A-Za-z0-9_\-]*)=(.*)\z/m)
-                    accum_hash[kv_match[1]] = \{{val_type_q}}.__arg_transform(kv_match[2], **\{{fann[:forwarded_opts]}})
+                    begin
+                      \{% if has_per_flag_transform %}
+                        elem_value = self.\{{per_flag_transform_method.id}}(kv_match[2])
+                      \{% elsif elem_tw %}
+                        elem_value = self.\{{elem_tw.id}}(kv_match[2])
+                      \{% else %}
+                        elem_value = \{{val_type_q}}.__arg_transform(kv_match[2], **\{{fann[:forwarded_opts]}})
+                      \{% end %}
+                    rescue elem_error : ::ArgumentError
+                      raise ::Shell::AutoComplete::ParseError.new(\{{fann[:canonical]}} + ": " + (elem_error.message || "invalid value"))
+                    end
+                    \{% if has_per_flag_validate %}
+                      elem_check = self.\{{per_flag_validate_method.id}}(elem_value)
+                    \{% elsif elem_vw %}
+                      elem_check = self.\{{elem_vw.id}}(elem_value)
+                    \{% elsif val_type.resolve.class.methods.any? { |m| m.name.stringify == "__arg_validate" } %}
+                      elem_check = \{{val_type_q}}.__arg_validate(elem_value, **\{{fann[:forwarded_opts]}})
+                    \{% else %}
+                      elem_check = true
+                    \{% end %}
+                    case elem_check
+                    when true
+                      # ok
+                    when ::String
+                      raise ::Shell::AutoComplete::ParseError.new(\{{fann[:canonical]}} + ": " + elem_check.as(::String))
+                    when false
+                      raise ::Shell::AutoComplete::ParseError.new(\{{fann[:canonical]}} + ": not a valid \{{ivar.name}}")
+                    end
+                    accum_hash[kv_match[1]] = elem_value
                   else
                     raise ::Shell::AutoComplete::ParseError.new("invalid hash entry: #{raw_v}")
                   end
