@@ -6,6 +6,10 @@ All notable changes are documented here.
 
 ### Added
 
+- `Bool?` flags now parse as tri-state switches: `--x` → `true`, `--no-x` → `false`, untouched → `nil`. Previously `Bool?` fell into the value-taking branch and demanded an argument. This is the missing primitive for mutation-style CLIs and config-file layering, where a file default applies only to options the user did not set. (#12)
+- `flag_given?(:name)` on every command instance: whether the named flag (by declaration name) was explicitly given under any of its spellings — canonical, aliases, short form, generated `--no-` negations, and enum shortcut switches. Distinguishes an explicit `--no-organized` (or an explicit value equal to the default) from silence. Unknown names raise `ArgumentError`. (#12)
+- Long aliases on Bool/`Bool?` switches now work. Previously `flag dryrun : Bool, "--dryrun", "--dry-run", ...` silently left `--dry-run` (and `--no-dry-run`) as unknown flags; aliases were accepted by the macro but never matched at parse time. Every declared long alias now parses, gets its own generated `--no-` negation, appears in completion, and registers in the duplicate-name checker. (#13)
+
 - `parsed_occurrences` on every command instance: a raw, ordered log of each flag occurrence matched during parse, as `Array({String, String?})` — the spelling exactly as typed (dashes kept, aliases not canonicalized) and the raw value consumed from argv or after `=` (`nil` for switches and forced-value shortcut flags). Positionals are not logged; unknown flags never appear (parse rejects them first). Enables audit logging, re-emitting an equivalent command line, and order-sensitive resolution in `run`. (#11)
 
 - Compile-time duplicate flag-name detection. Every spelling a `flag` declaration produces — canonical, aliases, short form, the generated `--no-` negation, and enum `shortcut_flags:` switches — registers in a per-command registry, and a collision is now a compile error naming both flags instead of undefined behavior (previously the first declaration silently won at parse time while help showed both). (#10)
