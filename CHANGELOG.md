@@ -2,6 +2,12 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Added
+
+- Named flag catalog: `Shell::AutoComplete.common_flag :name, decl, ...` defines a reusable flag once, outside any command, and `import_flags :a, :b` inside a command pulls a chosen subset in. Imported flags expand in the importing command's own context, so they register in its name registry, participate in duplicate detection and `override:`, and appear in its help and completion exactly as directly declared flags do — and different commands can import different subsets of one catalog. This replaces the pattern of defining throwaway base commands solely to inherit a shared flag set. An unknown catalog name is a compile error, and importing a flag a command already declares collides under the existing duplicate-name rules.
+
 ## [2.0.1] - 2026-06-12
 
 Identical code to the final 2.0.0: the `v2.0.0` tag was re-pointed to include the `--version` support below, so `v2.0.0` and `v2.0.1` differ only in the version `shard.yml` declares (2.0.0 vs 2.0.1). This changelog entry itself landed after the `v2.0.1` tag and ships with the next release.
