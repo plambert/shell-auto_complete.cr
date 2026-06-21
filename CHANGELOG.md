@@ -6,6 +6,7 @@ All notable changes are documented here.
 
 ### Added
 
+- `before_run` hook: registers a block to run on the parsed command instance after parsing and before `run`, for setup that must happen once — resolving an inherited flag into shared state, opening a connection, configuring a global, or cross-flag validation a single flag's validator can't express. Hooks are collected down the class hierarchy and run parent-first, so a `parent:`-derived subcommand inherits its base's hooks automatically without `super`; the block runs on the instance (all properties in scope) and takes no arguments. An `ArgumentError` raised from a hook becomes a clean `ParseError` carrying the command path. Hooks run during `dispatch`, only for the command whose `run` executes, and multiple hooks in one class run in declaration order.
 - Named flag catalog: `Shell::AutoComplete.common_flag :name, decl, ...` defines a reusable flag once, outside any command, and `import_flags :a, :b` inside a command pulls a chosen subset in. Imported flags expand in the importing command's own context, so they register in its name registry, participate in duplicate detection and `override:`, and appear in its help and completion exactly as directly declared flags do — and different commands can import different subsets of one catalog. This replaces the pattern of defining throwaway base commands solely to inherit a shared flag set. An unknown catalog name is a compile error, and importing a flag a command already declares collides under the existing duplicate-name rules.
 
 ## [2.0.1] - 2026-06-12

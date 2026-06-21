@@ -13,4 +13,7 @@ module Shell::AutoComplete
 
   annotation OrderedFlagGroupDef
   end
+
+  annotation BeforeRunDef
+  end
 end
