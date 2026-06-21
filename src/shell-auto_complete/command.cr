@@ -111,6 +111,27 @@ module Shell::AutoComplete
         nil
       end
 
+      # Invokes every `before_run` hook in the class hierarchy, parent-first,
+      # on this instance. Called by `dispatch` between parse and `run`.
+      def run_before_hooks : Nil
+        \{% begin %}
+          # Build the ownership order base-first: ancestors come nearest-first,
+          # so prepending each to a list seeded with the leaf yields
+          # furthest-ancestor → ... → leaf (the macro language has no reverse).
+          \{% ordered_owners = [@type] %}
+          \{% for ancestor in @type.ancestors %}
+            \{% ordered_owners = [ancestor] + ordered_owners %}
+          \{% end %}
+          \{% for owner in ordered_owners %}
+            \{% for meth in owner.methods %}
+              \{% if meth.annotation(::Shell::AutoComplete::BeforeRunDef) %}
+                self.\{{ meth.name }}
+              \{% end %}
+            \{% end %}
+          \{% end %}
+        \{% end %}
+      end
+
       def self.flag_info(ivar_name : String) : ::Shell::AutoComplete::Command::FlagInfo
         \{% for ivar in @type.instance_vars %}
           \{% if (fann = ivar.annotation(::Shell::AutoComplete::FlagDef)) && !@type.constant("OVERRIDDEN_FLAG_IVARS").includes?(ivar.name.stringify) %}
@@ -1218,6 +1239,7 @@ module Shell::AutoComplete
             \{% end %}
           \{% end %}
           inst = parse(argv)
+          inst.run_before_hooks
           inst.run
           inst
         rescue ex : ::Shell::AutoComplete::ParseError
