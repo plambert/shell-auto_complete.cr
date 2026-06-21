@@ -25,8 +25,16 @@ module Shell::AutoComplete
       FLAG_REGISTRY_OWNERS  = {% if @type.superclass && @type.superclass.has_constant?("FLAG_REGISTRY_OWNERS") %}{{ @type.superclass.constant("FLAG_REGISTRY_OWNERS") }}{% else %}[] of ::String{% end %}
       OVERRIDDEN_FLAG_IVARS = {% if @type.superclass && @type.superclass.has_constant?("OVERRIDDEN_FLAG_IVARS") %}{{ @type.superclass.constant("OVERRIDDEN_FLAG_IVARS") }}{% else %}[] of ::String{% end %}
 
+      # Macro-time-readable list of this command's direct subcommand classes,
+      # parallel to SUBCOMMANDS (which is built at runtime and so can't be
+      # enumerated during macro expansion). The `subcommand` macro pushes each
+      # class node here; `dispatch` reads it to learn subcommand flag arities
+      # for routing past a subcommand-only flag (issue #22 follow-up).
+      SUBCOMMAND_CLASS_NODES = [] of ::Shell::AutoComplete::Command.class
+
       macro subcommand(klass)
         SUBCOMMANDS << { \{{klass}}.command_name, \{{klass}}.as(::Shell::AutoComplete::Command.class) }
+        \{% @type.constant("SUBCOMMAND_CLASS_NODES") << klass %}
 
         private def __has_subcommands_sentinel__ : Nil
         end
@@ -1156,6 +1164,126 @@ module Shell::AutoComplete
                   value_flag_tokens << \{{spelling}}
                 \{% end %}
               \{% end %}
+            \{% end %}
+            # Routing union (issue #22 follow-up): so `app --format json list`
+            # routes when only `list` declares `--format`, the parent must know
+            # `--format` takes a value to walk past it to the subcommand word.
+            # We gather the value/switch arity of every direct subcommand's
+            # flags, skipping spellings the parent already routes (parent is
+            # authoritative). The chosen subcommand still accepts or rejects
+            # the flag itself, so a flag typed before the wrong subcommand is
+            # rejected there. Subcommands disagreeing on a spelling's arity is
+            # a compile error — the parent can't know how far to skip.
+            \{% begin %}
+            \{%
+              parent_names = ["--help", "-h", "--all-help"]
+              parent_names << (@type.has_constant?("SHELL_COMPLETION_FLAG") ? @type.constant("SHELL_COMPLETION_FLAG") : "--shell-completion")
+              parent_names << "--version"
+              parent_flag_owners = [@type] + @type.ancestors
+              parent_flag_owners.each do |owner_type|
+                owner_type.instance_vars.each do |ivar|
+                  if (pfann = ivar.annotation(::Shell::AutoComplete::FlagDef)) && !@type.constant("OVERRIDDEN_FLAG_IVARS").includes?(ivar.name.stringify)
+                    parent_names << pfann[:canonical]
+                    pfann[:aliases].each { |alias_name| parent_names << alias_name }
+                    parent_names << pfann[:short] if pfann[:short]
+                    p_is_switch = ivar.type.id.stringify == "Bool" || (ivar.type.union? && ivar.type.union_types.all? { |ut| ut == Nil || ut.id.stringify == "Bool" } && ivar.type.union_types.any? { |ut| ut.id.stringify == "Bool" })
+                    if p_is_switch && pfann[:negatable]
+                      parent_names << "--no-" + pfann[:canonical].gsub(/^--/, "")
+                      pfann[:aliases].each { |alias_name| parent_names << "--no-" + alias_name.gsub(/^--/, "") }
+                    end
+                    if psc = pfann[:shortcut_flags]
+                      p_inner = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type
+                      p_only = psc.is_a?(NamedTupleLiteral) ? psc[:only] : nil
+                      p_except = psc.is_a?(NamedTupleLiteral) ? psc[:except] : nil
+                      p_inner.resolve.constants.each do |case_const|
+                        cu = case_const.stringify.underscore
+                        inc = p_only ? p_only.any? { |cs| cs.id.stringify == cu } : (p_except ? !p_except.any? { |cs| cs.id.stringify == cu } : true)
+                        parent_names << "--" + cu.tr("_", "-") if inc
+                      end
+                      if psc.is_a?(NamedTupleLiteral) && (pal = psc[:aliases])
+                        pal.keys.each { |ak| parent_names << "--" + ak.stringify.underscore.tr("_", "-") }
+                      end
+                    end
+                  end
+                end
+                owner_type.methods.each do |meth|
+                  if pgann = meth.annotation(::Shell::AutoComplete::OrderedFlagGroupDef)
+                    pgann[:spellings].each { |spelling| parent_names << spelling }
+                  end
+                end
+              end
+
+              union_value = [] of ::StringLiteral
+              union_switch = [] of ::StringLiteral
+              union_conflict = nil
+              @type.constant("SUBCOMMAND_CLASS_NODES").each do |sub_node|
+                sub_type = sub_node.resolve
+                sub_type.instance_vars.each do |ivar|
+                  if (sfann = ivar.annotation(::Shell::AutoComplete::FlagDef)) && !sub_type.constant("OVERRIDDEN_FLAG_IVARS").includes?(ivar.name.stringify)
+                    s_is_switch = ivar.type.id.stringify == "Bool" || (ivar.type.union? && ivar.type.union_types.all? { |ut| ut == Nil || ut.id.stringify == "Bool" } && ivar.type.union_types.any? { |ut| ut.id.stringify == "Bool" })
+                    sub_value = [] of ::StringLiteral
+                    sub_switch = [] of ::StringLiteral
+                    if s_is_switch
+                      sub_switch << sfann[:canonical]
+                      sfann[:aliases].each { |alias_name| sub_switch << alias_name }
+                      sub_switch << sfann[:short] if sfann[:short]
+                      if sfann[:negatable]
+                        sub_switch << "--no-" + sfann[:canonical].gsub(/^--/, "")
+                        sfann[:aliases].each { |alias_name| sub_switch << "--no-" + alias_name.gsub(/^--/, "") }
+                      end
+                    else
+                      sub_value << sfann[:canonical]
+                      sfann[:aliases].each { |alias_name| sub_value << alias_name }
+                      sub_value << sfann[:short] if sfann[:short]
+                      if ssc = sfann[:shortcut_flags]
+                        s_inner = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type
+                        s_only = ssc.is_a?(NamedTupleLiteral) ? ssc[:only] : nil
+                        s_except = ssc.is_a?(NamedTupleLiteral) ? ssc[:except] : nil
+                        s_inner.resolve.constants.each do |case_const|
+                          cu = case_const.stringify.underscore
+                          inc = s_only ? s_only.any? { |cs| cs.id.stringify == cu } : (s_except ? !s_except.any? { |cs| cs.id.stringify == cu } : true)
+                          sub_switch << "--" + cu.tr("_", "-") if inc
+                        end
+                        if ssc.is_a?(NamedTupleLiteral) && (sal = ssc[:aliases])
+                          sal.keys.each { |ak| sub_switch << "--" + ak.stringify.underscore.tr("_", "-") }
+                        end
+                      end
+                    end
+                    sub_value.each do |sp|
+                      unless parent_names.includes?(sp)
+                        union_conflict = sp if union_switch.includes?(sp)
+                        union_value << sp unless union_value.includes?(sp)
+                      end
+                    end
+                    sub_switch.each do |sp|
+                      unless parent_names.includes?(sp)
+                        union_conflict = sp if union_value.includes?(sp)
+                        union_switch << sp unless union_switch.includes?(sp)
+                      end
+                    end
+                  end
+                end
+                sub_type.methods.each do |meth|
+                  if sgann = meth.annotation(::Shell::AutoComplete::OrderedFlagGroupDef)
+                    sgann[:spellings].each do |sp|
+                      unless parent_names.includes?(sp)
+                        union_conflict = sp if union_switch.includes?(sp)
+                        union_value << sp unless union_value.includes?(sp)
+                      end
+                    end
+                  end
+                end
+              end
+              if union_conflict
+                raise "subcommands of #{@type} disagree on whether #{union_conflict} takes a value, so the parent cannot route past it; give the flag the same arity on every subcommand that declares it, or declare it on the parent"
+              end
+            %}
+            \{% for sp in union_value %}
+              value_flag_tokens << \{{ sp }}
+            \{% end %}
+            \{% for sp in union_switch %}
+              switch_flag_tokens << \{{ sp }}
+            \{% end %}
             \{% end %}
             route_index = 0
             subcommand_word = nil
