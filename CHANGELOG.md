@@ -4,6 +4,10 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+### Documentation
+
+- README restructured into an introduction, a basic-use walkthrough, and a complete reference covering every macro and flag option. New `cookbook.md` with task-oriented recipes named the way a newcomer would phrase them (e.g. "accept one or more files as arguments", "validate only even integers above 5", "accept --include/--exclude keeping their exact order"). Three new runnable examples cover the features added since the originals: `examples/containers` (inheritance, `before_run`, the `common_flag` catalog, the routing union, version, `shortcut_flags`), `examples/sync` (`ordered_flag_group`, `parsed_occurrences`, `choices:`/`range:`/`matches:`, `set_operations:`, `immediate:`, per-element transforms), and `examples/toggles` (`SetDelta`, dotted/colon `Hash` keys, `Bool?` tri-state with `flag_given?`, `override:`).
+
 ### Added
 
 - Routing past subcommand-only flags: a parent now walks past a flag that only some of its subcommands declare to find the subcommand word, so `foo --format json list` routes to `list` (which declares `--format`) while `foo --format json status` is rejected at `status` (which does not) — the accept/reject decision stays with the chosen subcommand. The parent learns each direct subcommand's flag arities at macro time (via a new macro-time `SUBCOMMAND_CLASS_NODES` registry) so it knows whether to skip a following value token; spellings the parent itself routes take precedence, and a flag no subcommand declares is still rejected at the parent before the word. Subcommands disagreeing on whether a shared spelling takes a value is a compile error, since the parent can't know how far to skip. Pairs with the named flag catalog: import a flag onto the subset of subcommands that should accept it, and it routes before or after the subcommand word. (#22)
