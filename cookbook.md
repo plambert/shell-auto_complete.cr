@@ -168,7 +168,7 @@ end
 declared type (the property storage adapts), so a `--timeout` declared `Int32` can be fed by a
 parser that accepts `"5m"`.
 
-### Reuse the per-flag method convention instead of naming it
+### Attach a converter to a flag by name
 
 ```crystal
 flag timeout : Int32 = 0, "--timeout", "..."   # no transform_with:
@@ -240,9 +240,9 @@ single-dash token that matches no flag is treated as a positional, so a command 
 positional cannot also have subcommands (its `+name`/`-name` tokens would be read as the subcommand
 word).
 
-## Lists, sets, and maps
+## Array, Set, and Hash parameters
 
-### Accept a flag more than once
+### Use repeated flags to fill an Array
 
 ```crystal
 flag tag : Array(String) = [] of String, "--tag", "Tag (repeatable)", delimiter: nil
@@ -265,7 +265,7 @@ themselves contain commas (paths, regexes, URLs, titles) — making the choice e
 ### Accept a set you can add to and remove from
 
 ```crystal
-flag features : Set(String) = Set(String).new, "--with", "e.g. +cache -logging", delimiter: ",", set_operations: true
+flag features : Set(String) = Set(String).new, "--with", "e.g. +cache,-logging", delimiter: ",", set_operations: true
 ```
 
 `set_operations: true` makes a `Set` flag treat `+name` as add, `-name` as remove, and a bare `name`
