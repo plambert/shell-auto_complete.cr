@@ -49,6 +49,7 @@ Shell::AutoComplete.command Build, name: "build", description: "Build the projec
   flag log_level : LogLevel = LogLevel::Info, "--log-level", "Log verbosity", shortcut_flags: true
   flag jobs : Int32 = 1, "--jobs", "-j", "Parallel jobs", range: 1..64
 
+  # Use Array(Path) to automatically enable file path completion in shells!
   positionals files : Array(Path), "Source files", min: 1
 
   def run
@@ -279,6 +280,9 @@ mytool --shell-completion fish > ~/.config/fish/completions/mytool.fish
 Completion covers subcommands, flag names (with alias filtering), `choices:`/enum values, `@[Flags]`
 trailing commas, dynamic `complete_with:` candidates, and native filesystem completion for
 `Path`/`File`/`Dir`.
+
+Using `String`, the shell completion won't complete anything. If you are expecting one of a fixed
+list of values, either use an Enum, or set `choices: %w(a b c)` on the flag.
 
 ## Examples
 
