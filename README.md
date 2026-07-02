@@ -122,6 +122,8 @@ ClassName.dispatch(ARGV)
 `command` options:
 
 * `name:` — the program/subcommand name (defaults to the basename of `PROGRAM_NAME`).
+* `aliases:` — alternate names this command answers to when routed as a subcommand (see
+  [Subcommands and routing](#subcommands-and-routing)).
 * `description:` — one-line description shown in help.
 * `parent:` — inherit another command's flags (see [Inheriting flags](#inheriting-flags)).
 * `header:` / `footer:` — prose before the `Usage:` line and after the body.
@@ -205,6 +207,22 @@ before or after it. When a subcommand declares a flag the parent doesn't, the pa
 past it (consulting the subcommand's flag arity) and the subcommand accepts or rejects it — so
 `tool --format json list` works while `tool --format json other` is rejected at `other`. Subcommands
 disagreeing on whether a shared spelling takes a value is a compile error.
+
+A subcommand may answer to more than one name with `aliases:` on its `command` macro:
+
+```crystal
+Shell::AutoComplete.command Move,
+  name: "move",
+  aliases: ["mv", "rename"],
+  description: "Move or rename a file",
+  parent: Files do
+  # ...
+end
+```
+
+Each alias routes to the command exactly as its canonical name does, is offered in completion, and
+is listed beside the name in the parent's help (`move, mv, rename`). A canonical name match on any
+subcommand wins over an alias, so an alias can never shadow another command's real name.
 
 ### Inheriting flags
 
