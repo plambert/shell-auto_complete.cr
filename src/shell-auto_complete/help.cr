@@ -1,7 +1,7 @@
 module Shell::AutoComplete
   module Help
     alias FlagRow = NamedTuple(canonical: String, aliases: Array(String), short: String?, description: String, placeholder: String?, group: String?)
-    alias SubcommandRow = NamedTuple(name: String, description: String)
+    alias SubcommandRow = NamedTuple(name: String, aliases: Array(String), description: String)
     alias PositionalRow = NamedTuple(name: String, description: String, variadic: Bool)
 
     DEFAULT_SECTION_ORDER = [:description, :options, :subcommands, :positionals]
@@ -39,7 +39,8 @@ module Shell::AutoComplete
               str << "\n"
               str << "Subcommands:\n"
               subcommands.each do |sub|
-                str << "  " << sub[:name].ljust(20) << "  " << sub[:description] << "\n"
+                label = ([sub[:name]] + sub[:aliases]).join(", ")
+                str << "  " << label.ljust(20) << "  " << sub[:description] << "\n"
               end
             end
           when :positionals

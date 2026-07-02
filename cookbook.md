@@ -389,6 +389,26 @@ end
 `subcommand` registers a child command. Sub-subcommands nest arbitrarily. `tool build --help` routes
 to the child's help; `tool --all-help` prints the whole tree.
 
+### Give a subcommand alternate names, like `mv` for `move`
+
+```crystal
+Shell::AutoComplete.command Move,
+  name: "move",
+  aliases: ["mv", "rename"],
+  description: "Move or rename a file" do
+  def run; end
+end
+
+Shell::AutoComplete.command Files, name: "files", description: "..." do
+  subcommand Move
+end
+```
+
+`aliases:` lists extra names the command answers to. `files move`, `files mv`, and `files rename`
+all route to `Move`; every alias is offered in completion and listed beside the canonical name in
+help (`move, mv, rename`). A canonical name always wins over an alias, so an alias can't shadow
+another subcommand's real name.
+
 ### Let a global flag appear before or after the subcommand
 
 ```crystal

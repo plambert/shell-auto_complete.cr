@@ -2,6 +2,12 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Added
+
+- Subcommand aliases: `aliases:` on the `command` macro gives a command alternate names it answers to when routed as a subcommand (`aliases: ["mv", "rename"]` on a `move` command). Each alias routes to the command exactly as its canonical name does, is offered in shell completion, and is listed beside the canonical name in the parent's help (`move, mv, rename`). Routing resolves through `subcommand_named`, which matches any subcommand's canonical name before any alias, so an alias can never shadow another command's real name. The declared aliases are readable via `.command_aliases`.
+
 ## [2.1.0] - 2026-06-22
 
 ### Documentation

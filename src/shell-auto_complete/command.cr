@@ -49,6 +49,21 @@ module Shell::AutoComplete
         {% end %}
       end
 
+      # Alternate names this command answers to when routed as a subcommand,
+      # declared with `aliases:` on the `command` macro (e.g. `aliases:
+      # ["mv", "rename"]` on a `move` command). Each alias routes to this
+      # command exactly as its canonical name does, is offered in completion,
+      # and is listed beside the name in the parent's help. The canonical name
+      # is not repeated here.
+      def self.command_aliases : Array(String)
+        {% ann = @type.annotation(::Shell::AutoComplete::CommandDef) %}
+        {% if ann && ann[:aliases] %}
+          {{ ann[:aliases] }}.map(&.to_s)
+        {% else %}
+          [] of ::String
+        {% end %}
+      end
+
       # The program name shown by --version and the version subcommand;
       # set with the `tool_name` macro (a TOOL_NAME constant, inherited
       # through parent:), defaulting to the command's name — itself
@@ -112,9 +127,16 @@ module Shell::AutoComplete
         {% end %}
       end
 
+      # Resolves a token to a subcommand class by its canonical name or any
+      # of its declared `aliases:`. A canonical-name match on any subcommand
+      # wins over an alias match, so an alias can never shadow another
+      # command's real name.
       def self.subcommand_named(name : String) : ::Shell::AutoComplete::Command.class | Nil
         SUBCOMMANDS.each do |(sub_name, sub_klass)|
           return sub_klass if sub_name == name
+        end
+        SUBCOMMANDS.each do |(_, sub_klass)|
+          return sub_klass if sub_klass.command_aliases.includes?(name)
         end
         nil
       end
@@ -781,7 +803,7 @@ module Shell::AutoComplete
             \{% end %}
           \{% end %}
         \{% end %}
-        subcommands = SUBCOMMANDS.map { |(name, klass)| {name: name, description: klass.command_description} }
+        subcommands = SUBCOMMANDS.map { |(name, klass)| {name: name, aliases: klass.command_aliases, description: klass.command_description} }
         positionals = [] of ::Shell::AutoComplete::Help::PositionalRow
         \{% for ivar in @type.instance_vars %}
           \{% if pann = ivar.annotation(::Shell::AutoComplete::PositionalDef) %}
@@ -854,8 +876,11 @@ module Shell::AutoComplete
         # Subcommand position: cword == 1 and subcommands exist.
         \{% if @type.has_constant?("SUBCOMMANDS") %}
           if cword == 1
-            SUBCOMMANDS.each do |(sub_name, _)|
+            SUBCOMMANDS.each do |(sub_name, sub_klass)|
               result << sub_name if sub_name.starts_with?(current)
+              sub_klass.command_aliases.each do |sub_alias|
+                result << sub_alias if sub_alias.starts_with?(current)
+              end
             end
             return result unless result.empty?
           end
@@ -1308,10 +1333,10 @@ module Shell::AutoComplete
               route_index += 1
             end
             if subcommand_word
-              if match = SUBCOMMANDS.find { |(name, _)| name == subcommand_word }
+              if match = subcommand_named(subcommand_word)
                 routed_argv = argv.dup
                 routed_argv.delete_at(subcommand_index)
-                return match[1].dispatch(routed_argv, stdout: stdout, stderr: stderr, rescue_errors: false, parent_prefix: qualified)
+                return match.dispatch(routed_argv, stdout: stdout, stderr: stderr, rescue_errors: false, parent_prefix: qualified)
               end
               raise ::Shell::AutoComplete::ParseError.new("unknown subcommand: #{subcommand_word}")
             end
