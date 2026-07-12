@@ -37,6 +37,35 @@ Shell::AutoComplete.command CompNest, name: "nest", description: "x" do
   subcommand CompMid
 end
 
+enum CompSize
+  Bytes
+  Kilobytes
+  Megabytes
+end
+
+# Plain enum flag with derived shortcut switches; canonical, alias, and short
+# spellings all reach the same flag.
+Shell::AutoComplete.command CompEnum, name: "cenum", description: "x" do
+  flag unit : CompSize = CompSize::Bytes, %w[--unit --units], "-u", shortcut_flags: true
+end
+
+# shortcut_flags named-tuple config: except: drops a case, aliases: adds
+# switch spellings.
+Shell::AutoComplete.command CompEnumConf, name: "cenumconf", description: "x" do
+  flag unit : CompSize = CompSize::Bytes, "--unit",
+    shortcut_flags: {except: [:megabytes], aliases: {kb: :kilobytes}}
+end
+
+# An enum flag with complete_with: — the explicit completer must win over the
+# derived enum member candidates.
+Shell::AutoComplete.command CompEnumCw, name: "cenumcw", description: "x" do
+  flag unit : CompSize = CompSize::Bytes, "--unit", complete_with: :unit_candidates
+
+  def self.unit_candidates(ctx : Shell::AutoComplete::CompletionContext) : Array(String)
+    %w[custom-a custom-b]
+  end
+end
+
 describe "runtime __complete: flag names" do
   it "emits all flag forms when active word is empty" do
     output = IO::Memory.new
@@ -133,5 +162,91 @@ describe "runtime __complete: @[Flags] trailing comma" do
     lines.should contain("read,write")
     lines.should contain("read,execute")
     lines.should_not contain("read,read")
+  end
+end
+
+describe "runtime __complete: shortcut switches in flag names" do
+  it "offers derived shortcut switches alongside the flag itself" do
+    output = IO::Memory.new
+    CompEnum.dispatch(["__complete", "1", "cenum", ""], stdout: output)
+    lines = output.to_s.lines.map(&.strip)
+    lines.should contain("--unit")
+    lines.should contain("--bytes")
+    lines.should contain("--kilobytes")
+    lines.should contain("--megabytes")
+  end
+
+  it "prefix-filters shortcut switches" do
+    output = IO::Memory.new
+    CompEnum.dispatch(["__complete", "1", "cenum", "--k"], stdout: output)
+    lines = output.to_s.lines.map(&.strip)
+    lines.should contain("--kilobytes")
+    lines.should_not contain("--bytes")
+    lines.should_not contain("--megabytes")
+    lines.should_not contain("--unit")
+  end
+
+  it "does not offer an except:-excluded case's switch" do
+    output = IO::Memory.new
+    CompEnumConf.dispatch(["__complete", "1", "cenumconf", ""], stdout: output)
+    lines = output.to_s.lines.map(&.strip)
+    lines.should contain("--bytes")
+    lines.should contain("--kilobytes")
+    lines.should_not contain("--megabytes")
+  end
+
+  it "offers alias switches from the shortcut_flags config" do
+    output = IO::Memory.new
+    CompEnumConf.dispatch(["__complete", "1", "cenumconf", "--k"], stdout: output)
+    lines = output.to_s.lines.map(&.strip)
+    lines.should contain("--kb")
+    lines.should contain("--kilobytes")
+  end
+end
+
+describe "runtime __complete: plain enum values" do
+  it "offers all kebab-cased members after the canonical spelling" do
+    output = IO::Memory.new
+    CompEnum.dispatch(["__complete", "2", "cenum", "--unit", ""], stdout: output)
+    lines = output.to_s.lines.map(&.strip)
+    lines.should contain("bytes")
+    lines.should contain("kilobytes")
+    lines.should contain("megabytes")
+  end
+
+  it "prefix-filters members" do
+    output = IO::Memory.new
+    CompEnum.dispatch(["__complete", "2", "cenum", "--unit", "k"], stdout: output)
+    lines = output.to_s.lines.map(&.strip)
+    lines.should contain("kilobytes")
+    lines.should_not contain("bytes")
+    lines.should_not contain("megabytes")
+  end
+
+  it "matches the flag by an alias spelling" do
+    output = IO::Memory.new
+    CompEnum.dispatch(["__complete", "2", "cenum", "--units", ""], stdout: output)
+    lines = output.to_s.lines.map(&.strip)
+    lines.should contain("bytes")
+    lines.should contain("kilobytes")
+    lines.should contain("megabytes")
+  end
+
+  it "matches the flag by its short form" do
+    output = IO::Memory.new
+    CompEnum.dispatch(["__complete", "2", "cenum", "-u", "m"], stdout: output)
+    lines = output.to_s.lines.map(&.strip)
+    lines.should contain("megabytes")
+    lines.should_not contain("bytes")
+  end
+
+  it "lets complete_with: win over derived enum candidates" do
+    output = IO::Memory.new
+    CompEnumCw.dispatch(["__complete", "2", "cenumcw", "--unit", ""], stdout: output)
+    lines = output.to_s.lines.map(&.strip)
+    lines.should contain("custom-a")
+    lines.should contain("custom-b")
+    lines.should_not contain("bytes")
+    lines.should_not contain("kilobytes")
   end
 end
