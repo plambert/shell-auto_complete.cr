@@ -238,10 +238,31 @@ module Shell::AutoComplete
         if sc_conf && sc_resolved
           sc_only = sc_conf.is_a?(NamedTupleLiteral) ? sc_conf[:only] : nil
           sc_except = sc_conf.is_a?(NamedTupleLiteral) ? sc_conf[:except] : nil
+          # Two constants may kebab-case to the same switch spelling (KB and
+          # Kb both give --kb). When they hold the same value they are alias
+          # constants: the first-declared one owns the switch and later ones
+          # are skipped everywhere. When the values differ the switch would be
+          # ambiguous, so fail here (once, at the declaration site) with the
+          # fix spelled out.
+          sc_seen_kebabs = [] of StringLiteral
+          sc_seen_consts = [] of MacroId
           sc_resolved.constants.each do |case_const|
             case_under = case_const.stringify.underscore
             sc_included = sc_only ? sc_only.any? { |case_sym| case_sym.id.stringify == case_under } : (sc_except ? !sc_except.any? { |case_sym| case_sym.id.stringify == case_under } : true)
-            produced_names << "--" + case_under.tr("_", "-") if sc_included
+            if sc_included
+              case_kebab = case_under.tr("_", "-")
+              first_idx = nil
+              (0...sc_seen_kebabs.size).each do |seen_idx|
+                first_idx = seen_idx if first_idx == nil && sc_seen_kebabs[seen_idx] == case_kebab
+              end
+              if first_idx == nil
+                sc_seen_kebabs << case_kebab
+                sc_seen_consts << case_const
+                produced_names << "--" + case_kebab
+              elsif sc_resolved.constant(case_const) != sc_resolved.constant(sc_seen_consts[first_idx])
+                raise "shortcut_flags on flag #{decl.var}: enum constants #{sc_seen_consts[first_idx]} and #{case_const} both produce the switch --#{case_kebab.id} but have different values; exclude one by adding shortcut_flags: {except: [:#{case_under.id}]} (the except: list takes underscored case names as symbols)"
+              end
+            end
           end
           if sc_conf.is_a?(NamedTupleLiteral) && (sc_aliases_reg = sc_conf[:aliases])
             sc_aliases_reg.keys.each do |alias_key|
@@ -345,7 +366,9 @@ module Shell::AutoComplete
             if ph_type.is_a?(Path)
               ph_resolved = ph_type.resolve?
               if ph_resolved.is_a?(TypeNode) && ph_resolved < ::Enum
-                ph_enum_cases = ph_resolved.constants.map(&.stringify.underscore.tr("_", "-"))
+                # uniq: alias constants (KB = 1024, Kb = 1024) kebab-case to
+                # the same spelling; show it once.
+                ph_enum_cases = ph_resolved.constants.map(&.stringify.underscore.tr("_", "-")).uniq
               end
             end
             if ph_enum_cases

@@ -2,6 +2,12 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Fixed
+
+- `shortcut_flags:` now handles two enum constants whose names kebab-case to the same switch spelling (`KB` and `Kb` both produce `--kb`). When the constants hold the same value they are alias constants, so the switch is generated once, owned by the first-declared constant, and the later constants are skipped everywhere (parsing, `flag_given?`, routing, help, completion) — this previously failed to compile. When the values differ the switch would be ambiguous, so the flag is rejected at compile time with an error naming the constants and the colliding spelling and showing the fix (`shortcut_flags: {except: [:kb]}`) — previously this produced the misleading generic duplicate-flag error suggesting `override: true`, which cannot apply within a single declaration. Constants with distinct names but duplicate values (`Kilobytes = 1024`, `KB = 1024`) still each get their own switch. Enum value help placeholders and completion candidates deduplicate the collapsed spelling as well.
+
 ## [2.2.0] - 2026-07-01
 
 ### Added

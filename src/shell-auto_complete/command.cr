@@ -206,11 +206,14 @@ module Shell::AutoComplete
                 \{% inner_type_fg = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
                 \{% sc_only = sc_conf.is_a?(NamedTupleLiteral) ? sc_conf[:only] : nil %}
                 \{% sc_except = sc_conf.is_a?(NamedTupleLiteral) ? sc_conf[:except] : nil %}
+                \{% sc_seen_fg = [] of ::StringLiteral %}
                 \{% for case_const in inner_type_fg.resolve.constants %}
                   \{% case_under = case_const.stringify.underscore %}
+                  \{% case_kebab_fg = case_under.tr("_", "-") %}
                   \{% sc_included = sc_only ? sc_only.any? { |case_sym| case_sym.id.stringify == case_under } : (sc_except ? !sc_except.any? { |case_sym| case_sym.id.stringify == case_under } : true) %}
-                  \{% if sc_included %}
-                    spellings_\{{ivar.name}} << "--" + \{{case_under.tr("_", "-")}}
+                  \{% if sc_included && !sc_seen_fg.includes?(case_kebab_fg) %}
+                    \{% sc_seen_fg << case_kebab_fg %}
+                    spellings_\{{ivar.name}} << "--" + \{{case_kebab_fg}}
                   \{% end %}
                 \{% end %}
                 \{% if sc_conf.is_a?(NamedTupleLiteral) && (sc_aliases = sc_conf[:aliases]) %}
@@ -275,11 +278,15 @@ module Shell::AutoComplete
                 \{% inner_type_sc = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
                 \{% sc_only = sc_conf.is_a?(NamedTupleLiteral) ? sc_conf[:only] : nil %}
                 \{% sc_except = sc_conf.is_a?(NamedTupleLiteral) ? sc_conf[:except] : nil %}
+                # Alias constants (same value, same kebab spelling): only the
+                # first-declared constant gets a spec.
+                \{% sc_seen_sc = [] of ::StringLiteral %}
                 \{% for case_const in inner_type_sc.resolve.constants %}
                   \{% case_under = case_const.stringify.underscore %}
                   \{% kebab_name = case_under.tr("_", "-") %}
                   \{% sc_included = sc_only ? sc_only.any? { |case_sym| case_sym.id.stringify == case_under } : (sc_except ? !sc_except.any? { |case_sym| case_sym.id.stringify == case_under } : true) %}
-                  \{% if sc_included %}
+                  \{% if sc_included && !sc_seen_sc.includes?(kebab_name) %}
+                    \{% sc_seen_sc << kebab_name %}
                     specs << ::Shell::AutoComplete::Parser::FlagSpec.new(
                       canonical: \{{fann[:canonical]}},
                       names: ["--" + \{{kebab_name}}],
@@ -1167,11 +1174,14 @@ module Shell::AutoComplete
                     \{% inner_type_rt = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
                     \{% sc_only = sc_conf.is_a?(NamedTupleLiteral) ? sc_conf[:only] : nil %}
                     \{% sc_except = sc_conf.is_a?(NamedTupleLiteral) ? sc_conf[:except] : nil %}
+                    \{% sc_seen_rt = [] of ::StringLiteral %}
                     \{% for case_const in inner_type_rt.resolve.constants %}
                       \{% case_under = case_const.stringify.underscore %}
+                      \{% case_kebab_rt = case_under.tr("_", "-") %}
                       \{% sc_included = sc_only ? sc_only.any? { |case_sym| case_sym.id.stringify == case_under } : (sc_except ? !sc_except.any? { |case_sym| case_sym.id.stringify == case_under } : true) %}
-                      \{% if sc_included %}
-                        switch_flag_tokens << "--" + \{{case_under.tr("_", "-")}}
+                      \{% if sc_included && !sc_seen_rt.includes?(case_kebab_rt) %}
+                        \{% sc_seen_rt << case_kebab_rt %}
+                        switch_flag_tokens << "--" + \{{case_kebab_rt}}
                       \{% end %}
                     \{% end %}
                     \{% if sc_conf.is_a?(NamedTupleLiteral) && (sc_aliases = sc_conf[:aliases]) %}
@@ -1220,10 +1230,15 @@ module Shell::AutoComplete
                       p_inner = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type
                       p_only = psc.is_a?(NamedTupleLiteral) ? psc[:only] : nil
                       p_except = psc.is_a?(NamedTupleLiteral) ? psc[:except] : nil
+                      p_seen = [] of ::StringLiteral
                       p_inner.resolve.constants.each do |case_const|
                         cu = case_const.stringify.underscore
+                        ck = cu.tr("_", "-")
                         inc = p_only ? p_only.any? { |cs| cs.id.stringify == cu } : (p_except ? !p_except.any? { |cs| cs.id.stringify == cu } : true)
-                        parent_names << "--" + cu.tr("_", "-") if inc
+                        if inc && !p_seen.includes?(ck)
+                          p_seen << ck
+                          parent_names << "--" + ck
+                        end
                       end
                       if psc.is_a?(NamedTupleLiteral) && (pal = psc[:aliases])
                         pal.keys.each { |ak| parent_names << "--" + ak.stringify.underscore.tr("_", "-") }
@@ -1264,10 +1279,15 @@ module Shell::AutoComplete
                         s_inner = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type
                         s_only = ssc.is_a?(NamedTupleLiteral) ? ssc[:only] : nil
                         s_except = ssc.is_a?(NamedTupleLiteral) ? ssc[:except] : nil
+                        s_seen = [] of ::StringLiteral
                         s_inner.resolve.constants.each do |case_const|
                           cu = case_const.stringify.underscore
+                          ck = cu.tr("_", "-")
                           inc = s_only ? s_only.any? { |cs| cs.id.stringify == cu } : (s_except ? !s_except.any? { |cs| cs.id.stringify == cu } : true)
-                          sub_switch << "--" + cu.tr("_", "-") if inc
+                          if inc && !s_seen.includes?(ck)
+                            s_seen << ck
+                            sub_switch << "--" + ck
+                          end
                         end
                         if ssc.is_a?(NamedTupleLiteral) && (sal = ssc[:aliases])
                           sal.keys.each { |ak| sub_switch << "--" + ak.stringify.underscore.tr("_", "-") }
