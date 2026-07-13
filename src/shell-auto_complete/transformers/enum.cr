@@ -17,6 +17,8 @@ struct Enum
   end
 
   def self.__arg_complete(prefix : String, **opts) : Array(String)
-    names.map(&.to_s.underscore.tr("_", "-"))
+    # uniq: alias constants (KB = 1024, Kb = 1024) kebab-case to the same
+    # candidate; offer it once.
+    names.map(&.to_s.underscore.tr("_", "-")).uniq
   end
 end
