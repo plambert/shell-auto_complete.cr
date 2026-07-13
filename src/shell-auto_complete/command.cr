@@ -978,11 +978,15 @@ module Shell::AutoComplete
                 enum_flag_names_\{{ivar.name}} << \{{fann[:short]}}
               \{% end %}
               if enum_flag_names_\{{ivar.name}}.includes?(prev)
+                \{% ev_seen = [] of ::StringLiteral %}
                 \{% for case_const in inner_type_ev.resolve.constants %}
                   \{% case_name = case_const.stringify.underscore.tr("_", "-") %}
-                  if \{{case_name}}.starts_with?(current)
-                    result << \{{case_name}}
-                  end
+                  \{% unless ev_seen.includes?(case_name) %}
+                    \{% ev_seen << case_name %}
+                    if \{{case_name}}.starts_with?(current)
+                      result << \{{case_name}}
+                    end
+                  \{% end %}
                 \{% end %}
                 return result
               end
@@ -1113,11 +1117,14 @@ module Shell::AutoComplete
               \{% if sc_conf = fann[:shortcut_flags] %}
                 \{% sc_only = sc_conf.is_a?(NamedTupleLiteral) ? sc_conf[:only] : nil %}
                 \{% sc_except = sc_conf.is_a?(NamedTupleLiteral) ? sc_conf[:except] : nil %}
+                \{% sc_seen_fn = [] of ::StringLiteral %}
                 \{% for case_const in inner_type_flag.resolve.constants %}
                   \{% case_under = case_const.stringify.underscore %}
+                  \{% case_kebab_fn = case_under.tr("_", "-") %}
                   \{% sc_included = sc_only ? sc_only.any? { |case_sym| case_sym.id.stringify == case_under } : (sc_except ? !sc_except.any? { |case_sym| case_sym.id.stringify == case_under } : true) %}
-                  \{% if sc_included %}
-                    \{% sc_flag = "--" + case_under.tr("_", "-") %}
+                  \{% if sc_included && !sc_seen_fn.includes?(case_kebab_fn) %}
+                    \{% sc_seen_fn << case_kebab_fn %}
+                    \{% sc_flag = "--" + case_kebab_fn %}
                     if \{{sc_flag}}.starts_with?(current)
                       result << \{{sc_flag}}
                     end

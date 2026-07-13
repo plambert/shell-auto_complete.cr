@@ -73,6 +73,18 @@ describe "enum shortcut alias constants (same value, same switch spelling)" do
     CollisionUnit.__arg_complete("").should eq(["auto", "kb", "mb"])
   end
 
+  it "offers the collapsed shortcut switch once in flag-name completion" do
+    output = IO::Memory.new
+    CollisionCli.dispatch(["__complete", "1", "collide", "--"], stdout: output)
+    output.to_s.lines.count("--kb").should eq(1)
+  end
+
+  it "offers the collapsed spelling once in runtime enum value completion" do
+    output = IO::Memory.new
+    CollisionCli.dispatch(["__complete", "2", "collide", "--unit", ""], stdout: output)
+    output.to_s.lines.should eq(["auto", "kb", "mb"])
+  end
+
   it "routes the collapsed switch before the subcommand word" do
     CollisionConvert.last = ""
     CollisionRoot.dispatch(["--kb", "convert"], stdout: IO::Memory.new, rescue_errors: false)
