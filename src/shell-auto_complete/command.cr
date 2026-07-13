@@ -961,6 +961,39 @@ module Shell::AutoComplete
           \{% end %}
         \{% end %}
 
+        # Plain (non-@[Flags]) enum value completion: after a value-taking enum
+        # flag (any of its spellings), offer the enum's kebab-cased member
+        # names. Flags with a `complete_with:` or per-flag completer returned
+        # above, so an explicit completer always wins over these derived
+        # candidates.
+        \{% for ivar in @type.instance_vars %}
+          \{% if (fann = ivar.annotation(::Shell::AutoComplete::FlagDef)) && !@type.constant("OVERRIDDEN_FLAG_IVARS").includes?(ivar.name.stringify) %}
+            \{% inner_type_ev = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
+            \{% if inner_type_ev.resolve < ::Enum && !inner_type_ev.resolve.annotation(::Flags) %}
+              enum_flag_names_\{{ivar.name}} = [\{{fann[:canonical]}}] of ::String
+              \{% for alias_name in fann[:aliases] %}
+                enum_flag_names_\{{ivar.name}} << \{{alias_name}}
+              \{% end %}
+              \{% if fann[:short] %}
+                enum_flag_names_\{{ivar.name}} << \{{fann[:short]}}
+              \{% end %}
+              if enum_flag_names_\{{ivar.name}}.includes?(prev)
+                \{% ev_seen = [] of ::StringLiteral %}
+                \{% for case_const in inner_type_ev.resolve.constants %}
+                  \{% case_name = case_const.stringify.underscore.tr("_", "-") %}
+                  \{% unless ev_seen.includes?(case_name) %}
+                    \{% ev_seen << case_name %}
+                    if \{{case_name}}.starts_with?(current)
+                      result << \{{case_name}}
+                    end
+                  \{% end %}
+                \{% end %}
+                return result
+              end
+            \{% end %}
+          \{% end %}
+        \{% end %}
+
         # Positional-argument completion. Only engaged when the cursor is not on a
         # flag (`current` not starting with "-"); the slot the cursor maps to is
         # resolved through the flags it follows, then dispatched to that
@@ -1081,12 +1114,29 @@ module Shell::AutoComplete
                   result << neg_name_\{{ivar.name}}
                 end
               \{% end %}
-              \{% if (sc_conf = fann[:shortcut_flags]) && sc_conf.is_a?(NamedTupleLiteral) && (sc_aliases = sc_conf[:aliases]) %}
-                \{% for alias_key in sc_aliases.keys %}
-                  \{% alias_flag = "--" + alias_key.stringify.underscore.tr("_", "-") %}
-                  if \{{alias_flag}}.starts_with?(current)
-                    result << \{{alias_flag}}
-                  end
+              \{% if sc_conf = fann[:shortcut_flags] %}
+                \{% sc_only = sc_conf.is_a?(NamedTupleLiteral) ? sc_conf[:only] : nil %}
+                \{% sc_except = sc_conf.is_a?(NamedTupleLiteral) ? sc_conf[:except] : nil %}
+                \{% sc_seen_fn = [] of ::StringLiteral %}
+                \{% for case_const in inner_type_flag.resolve.constants %}
+                  \{% case_under = case_const.stringify.underscore %}
+                  \{% case_kebab_fn = case_under.tr("_", "-") %}
+                  \{% sc_included = sc_only ? sc_only.any? { |case_sym| case_sym.id.stringify == case_under } : (sc_except ? !sc_except.any? { |case_sym| case_sym.id.stringify == case_under } : true) %}
+                  \{% if sc_included && !sc_seen_fn.includes?(case_kebab_fn) %}
+                    \{% sc_seen_fn << case_kebab_fn %}
+                    \{% sc_flag = "--" + case_kebab_fn %}
+                    if \{{sc_flag}}.starts_with?(current)
+                      result << \{{sc_flag}}
+                    end
+                  \{% end %}
+                \{% end %}
+                \{% if sc_conf.is_a?(NamedTupleLiteral) && (sc_aliases = sc_conf[:aliases]) %}
+                  \{% for alias_key in sc_aliases.keys %}
+                    \{% alias_flag = "--" + alias_key.stringify.underscore.tr("_", "-") %}
+                    if \{{alias_flag}}.starts_with?(current)
+                      result << \{{alias_flag}}
+                    end
+                  \{% end %}
                 \{% end %}
               \{% end %}
               # Aliases — only emit when canonical does NOT match the prefix.
