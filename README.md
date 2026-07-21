@@ -176,8 +176,8 @@ Out of the box, value flags and positionals accept: every `Int*`/`UInt*`/`Float*
 `Bool`/`Bool?`, `Path`, `File`, `Dir`, `URI`, `Time`, `Regex`, `Log::Severity`, and
 `Socket::IPAddress`. Collections: `Array(T)`, `Set(T)`, `Hash(String, T)`. Synthetic constrained
 types ship under `Shell::AutoComplete::Types`: `PositiveInt`, `NonNegativeInt`, `Percentage`,
-`EpochTime`, `Date`, `EnvVar`, and the `SetDelta` positional type. A union type, or an element type
-with no built-in parser (`Tuple(String, String)`), needs an explicit `transform_with:`.
+`EpochTime`, `Date`, `EnvVar`, `DirPath`, and the `SetDelta` positional type. A union type, or an
+element type with no built-in parser (`Tuple(String, String)`), needs an explicit `transform_with:`.
 
 ### Placeholders
 
@@ -194,7 +194,8 @@ positional name : String, "Description"          # one required (nilable type = 
 positionals files : Array(Path), "Description", min: 1, max: 10   # variadic, at most one per command
 ```
 
-`Path`/`File`/`Dir` complete against the filesystem; `File`/`Dir` also check existence. A
+`Path`/`File`/`Dir` complete against the filesystem; `File`/`Dir` also check existence, and
+`Shell::AutoComplete::Types::DirPath` completes directories without checking. A
 `Shell::AutoComplete::Types::SetDelta` variadic positional binds `+name`/`-name`/`name` tokens into
 a `Hash(String, Bool)`. The placeholder in the usage line is derived from the property name
 (`<files...>`), not an ALL-CAPS string.

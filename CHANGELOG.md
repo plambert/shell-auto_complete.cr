@@ -2,6 +2,12 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Added
+
+- `Shell::AutoComplete::Types::DirPath`: a directory-shaped value that completes as a directory, like `Dir`, but performs no existence check, like `Path`. The stock path types covered three of the four useful combinations of "completes files or directories" and "must already exist", leaving no way to express a directory the local filesystem cannot vouch for — one on another host (a path handed to a daemon or a remote API) or one the program creates later with `Dir.mkdir_p`. `Dir` rejects both at parse time and `Path` accepts them but offers files alongside directories when completing, so consumers had to fall back to a `String` flag plus a hand-written `complete_with:` emitting the directory directive. Values are stored as `Path`, exactly as `Path`, `File`, and `Dir` flags are, and the derived help placeholder is `DIR`.
+
 ## [2.3.0] - 2026-07-21
 
 ### Fixed

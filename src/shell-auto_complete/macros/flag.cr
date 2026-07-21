@@ -383,7 +383,7 @@ module Shell::AutoComplete
               placeholder = "PATH"
             elsif ph_base == "File"
               placeholder = "FILE"
-            elsif ph_base == "Dir"
+            elsif ["Dir", "DirPath"].includes?(ph_base)
               placeholder = "DIR"
             elsif ph_base == "URI"
               placeholder = "URL"
