@@ -223,6 +223,18 @@ positionals files : Array(Path), "Inputs"
 (with `~` expansion, trailing slashes, coloring). `File`/`Dir` additionally check existence at parse
 time and complete files/directories respectively; `Path` accepts anything.
 
+### Complete a directory that doesn't exist yet, or lives on another host
+
+```crystal
+flag download_dir : Shell::AutoComplete::Types::DirPath?, "--download-dir",
+  "Destination on the daemon's host"
+```
+
+`Dir` checks that the directory exists locally, which is wrong for a path handed to a remote daemon
+or one the program `mkdir_p`s on first run — both are valid input it would reject. `Path` accepts
+them but offers files alongside directories when completing. `DirPath` completes directories only,
+like `Dir`, and checks nothing, like `Path`. Values are stored as `Path`, same as the other three.
+
 ### Toggle a set of things on and off in one invocation
 
 ```crystal
