@@ -2,6 +2,12 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Fixed
+
+- Scalar flag validation errors now name the flag, matching the collection-flag format. A `range:`, `matches:`, `choices:`, or `validate_with:` failure on a scalar flag previously reported only the value (`0 out of range 1..65535`), leaving the user to guess which flag rejected it, while `Array`/`Set`/`Hash` flags already prefixed the canonical spelling; scalars now produce the same shape (`--port: 0 out of range 1..65535`). An `ArgumentError` raised while transforming a scalar flag's value — from the stock type transformers, `transform_with:`, or a per-flag `__arg_transform_<name>` method — is likewise converted to a `ParseError` carrying the canonical spelling, so `parse` now raises `ParseError` rather than a bare `ArgumentError` for these, exactly as the collection paths always have. Scalar positional validators returning a message string also gain a prefix naming the positional. (#49)
+
 ## [2.2.1] - 2026-07-12
 
 ### Fixed

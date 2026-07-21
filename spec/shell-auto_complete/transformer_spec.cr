@@ -25,8 +25,8 @@ describe "numeric transformers" do
     IntDefaultCli.parse([] of String).count.should eq(5)
   end
 
-  it "raises on non-numeric values for Int32" do
-    expect_raises(ArgumentError) do
+  it "raises on non-numeric values for Int32, naming the flag" do
+    expect_raises(Shell::AutoComplete::ParseError, /--count: /) do
       IntCli.parse(["--count", "abc"])
     end
   end

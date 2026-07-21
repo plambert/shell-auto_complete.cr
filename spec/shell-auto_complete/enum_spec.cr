@@ -29,7 +29,7 @@ describe "ordinary enum flag" do
   end
 
   it "rejects unknown cases" do
-    expect_raises(ArgumentError) do
+    expect_raises(Shell::AutoComplete::ParseError, /--level: /) do
       EnumCli.parse(["--level", "trace"])
     end
   end

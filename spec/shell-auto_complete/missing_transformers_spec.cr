@@ -23,7 +23,7 @@ describe "Char transformer" do
   end
 
   it "raises on multi-character input" do
-    expect_raises(ArgumentError) do
+    expect_raises(Shell::AutoComplete::ParseError, /--letter: /) do
       CharCli.parse(["--letter", "xy"])
     end
   end
@@ -40,7 +40,7 @@ describe "File transformer" do
   end
 
   it "raises when the file does not exist" do
-    expect_raises(ArgumentError, /not.*exist|no such/i) do
+    expect_raises(Shell::AutoComplete::ParseError, /--input: .*(not.*exist|no such)/i) do
       FileCli.parse(["--input", "/nonexistent/path/xyz"])
     end
   end
@@ -52,7 +52,7 @@ describe "Dir transformer" do
   end
 
   it "raises when the directory does not exist" do
-    expect_raises(ArgumentError, /not.*directory|not.*exist/i) do
+    expect_raises(Shell::AutoComplete::ParseError, /--path: .*(not.*directory|not.*exist)/i) do
       DirCli.parse(["--path", "/nonexistent/xyz"])
     end
   end
