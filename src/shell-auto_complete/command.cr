@@ -898,36 +898,9 @@ module Shell::AutoComplete
         \{% end %}
 
         # Check if prev word is a flag that takes a value — emit value candidates.
-        # @[Flags] enum trailing-comma completion.
-        \{% for ivar in @type.instance_vars %}
-          \{% if (fann = ivar.annotation(::Shell::AutoComplete::FlagDef)) && !@type.constant("OVERRIDDEN_FLAG_IVARS").includes?(ivar.name.stringify) %}
-            \{% inner_type = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
-            \{% if inner_type.resolve.annotation(::Flags) %}
-              all_names_\{{ivar.name}} = [\{{fann[:canonical]}}] of ::String
-              \{% for alias_name in fann[:aliases] %}
-                all_names_\{{ivar.name}} << \{{alias_name}}
-              \{% end %}
-              \{% if fann[:short] %}
-                all_names_\{{ivar.name}} << \{{fann[:short]}}
-              \{% end %}
-              if all_names_\{{ivar.name}}.includes?(prev)
-                if current.includes?(",") || current.ends_with?(",")
-                  existing_parts = current.chomp(",").split(",").reject(&.empty?)
-                  base_prefix = current.chomp(",")
-                  \{% for case_const in inner_type.resolve.constants %}
-                    \{% case_name = case_const.stringify.underscore.tr("_", "-") %}
-                    unless existing_parts.includes?(\{{case_name}})
-                      result << base_prefix + "," + \{{case_name}}
-                    end
-                  \{% end %}
-                end
-                return result
-              end
-            \{% end %}
-          \{% end %}
-        \{% end %}
-
-        # complete_with: and per-flag __arg_complete_<name> dispatch.
+        # complete_with: and per-flag __arg_complete_<name> dispatch. This runs
+        # before every derived-candidate block so an explicit completer always
+        # wins, including over @[Flags] trailing-comma completion.
         \{% for ivar in @type.instance_vars %}
           \{% if (fann = ivar.annotation(::Shell::AutoComplete::FlagDef)) && !@type.constant("OVERRIDDEN_FLAG_IVARS").includes?(ivar.name.stringify) %}
             \{% per_flag_complete_method = "__arg_complete_" + ivar.name.stringify %}
@@ -959,6 +932,49 @@ module Shell::AutoComplete
                   sub_candidates_\{{ivar.name}} = self.\{{cw.id}}(ctx_\{{ivar.name}})
                 \{% end %}
                 sub_candidates_\{{ivar.name}}.each { |candidate| result << candidate }
+                return result
+              end
+            \{% end %}
+          \{% end %}
+        \{% end %}
+
+        # @[Flags] enum value completion: after any spelling of the flag, offer
+        # the kebab-cased member names (prefix-filtered, alias constants once);
+        # once the value has a trailing or embedded comma, offer the remaining
+        # members appended after the existing ones.
+        \{% for ivar in @type.instance_vars %}
+          \{% if (fann = ivar.annotation(::Shell::AutoComplete::FlagDef)) && !@type.constant("OVERRIDDEN_FLAG_IVARS").includes?(ivar.name.stringify) %}
+            \{% inner_type = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
+            \{% if inner_type.resolve.annotation(::Flags) %}
+              all_names_\{{ivar.name}} = [\{{fann[:canonical]}}] of ::String
+              \{% for alias_name in fann[:aliases] %}
+                all_names_\{{ivar.name}} << \{{alias_name}}
+              \{% end %}
+              \{% if fann[:short] %}
+                all_names_\{{ivar.name}} << \{{fann[:short]}}
+              \{% end %}
+              if all_names_\{{ivar.name}}.includes?(prev)
+                if current.includes?(",") || current.ends_with?(",")
+                  existing_parts = current.chomp(",").split(",").reject(&.empty?)
+                  base_prefix = current.chomp(",")
+                  \{% for case_const in inner_type.resolve.constants %}
+                    \{% case_name = case_const.stringify.underscore.tr("_", "-") %}
+                    unless existing_parts.includes?(\{{case_name}})
+                      result << base_prefix + "," + \{{case_name}}
+                    end
+                  \{% end %}
+                else
+                  \{% fv_seen = [] of ::StringLiteral %}
+                  \{% for case_const in inner_type.resolve.constants %}
+                    \{% case_name = case_const.stringify.underscore.tr("_", "-") %}
+                    \{% unless fv_seen.includes?(case_name) %}
+                      \{% fv_seen << case_name %}
+                      if \{{case_name}}.starts_with?(current)
+                        result << \{{case_name}}
+                      end
+                    \{% end %}
+                  \{% end %}
+                end
                 return result
               end
             \{% end %}
@@ -997,6 +1013,111 @@ module Shell::AutoComplete
             \{% end %}
           \{% end %}
         \{% end %}
+
+        # Derived flag-value completion (issue #48): when prev is any spelling
+        # of a value-taking flag, the cursor sits on that flag's value, so this
+        # branch always returns — falling through would wrongly offer flag
+        # names (or positional candidates) as the value. `choices:` wins over
+        # type-derived candidates; otherwise the flag's declared type resolves
+        # to its `__arg_complete` (Path/File/Dir emit the native-completion
+        # directive, exactly as positionals do), collections complete their
+        # element type, and types with no completer yield no candidates.
+        # Tokens after a `--` terminator are positional, so the branch is
+        # skipped there.
+        dash_dash_index = 1
+        dash_dash_before_cursor = false
+        while dash_dash_index < cword && dash_dash_index < words.size
+          if words[dash_dash_index] == "--"
+            dash_dash_before_cursor = true
+            break
+          end
+          dash_dash_index += 1
+        end
+        unless dash_dash_before_cursor
+          if prev == shell_completion_flag_name
+            ::Shell::AutoComplete::Completion::InstallFlag::SHELLS.each do |shell_name|
+              result << shell_name if shell_name.starts_with?(current)
+            end
+            return result
+          end
+          \{% for ivar in @type.instance_vars %}
+            \{% if (fann = ivar.annotation(::Shell::AutoComplete::FlagDef)) && !@type.constant("OVERRIDDEN_FLAG_IVARS").includes?(ivar.name.stringify) %}
+              \{% is_switch_dv = ivar.type.id.stringify == "Bool" || (ivar.type.union? && ivar.type.union_types.all? { |ut| ut == Nil || ut.id.stringify == "Bool" } && ivar.type.union_types.any? { |ut| ut.id.stringify == "Bool" }) %}
+              \{% unless is_switch_dv %}
+                dv_names_\{{ivar.name}} = [\{{fann[:canonical]}}] of ::String
+                \{% for alias_name in fann[:aliases] %}
+                  dv_names_\{{ivar.name}} << \{{alias_name}}
+                \{% end %}
+                \{% if fann[:short] %}
+                  dv_names_\{{ivar.name}} << \{{fann[:short]}}
+                \{% end %}
+                if dv_names_\{{ivar.name}}.includes?(prev)
+                  \{% dv_fwd = fann[:forwarded_opts] %}
+                  \{% dv_choices = dv_fwd.is_a?(NamedTupleLiteral) ? dv_fwd[:choices] : nil %}
+                  \{% if dv_choices.is_a?(ArrayLiteral) %}
+                    \{% for choice in dv_choices %}
+                      \{% choice_str = choice.is_a?(StringLiteral) ? choice : choice.id.stringify %}
+                      if \{{choice_str}}.starts_with?(current)
+                        result << \{{choice_str}}
+                      end
+                    \{% end %}
+                  \{% else %}
+                    \{% dv_inner_res = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
+                    \{% dv_base = dv_inner_res.id.stringify.gsub(/\A::/, "").split("(")[0] %}
+                    \{% if ["Array", "Set"].includes?(dv_base) %}
+                      \{% dv_el = dv_inner_res.type_vars[0] %}
+                      \{% dv_el_q = ((dv_el.stringify.starts_with?("::") || dv_el.stringify.starts_with?("(")) ? dv_el : "::#{dv_el}".id) %}
+                      # Enums inherit __arg_complete from the Enum base, which
+                      # metaclass-method existence checks don't see.
+                      \{% if dv_el.resolve < ::Enum || dv_el.resolve.class.methods.any? { |m| m.name.stringify == "__arg_complete" } %}
+                        \{% dv_delim = fann[:delimiter] %}
+                        \{% if dv_delim.is_a?(StringLiteral) %}
+                          # Split-on-delimiter collection: complete the element
+                          # after the last delimiter, keeping the earlier
+                          # elements as the candidate's prefix. Directive
+                          # sentinels can't be prefixed, so they are only
+                          # emitted while the value has no delimiter yet.
+                          if dv_delim_idx_\{{ivar.name}} = current.rindex(\{{dv_delim}})
+                            dv_elem_start_\{{ivar.name}} = dv_delim_idx_\{{ivar.name}} + \{{dv_delim}}.size
+                            dv_elem_prefix_\{{ivar.name}} = current[dv_elem_start_\{{ivar.name}}..]
+                            dv_elem_base_\{{ivar.name}} = current[0, dv_elem_start_\{{ivar.name}}]
+                            \{{dv_el_q}}.__arg_complete(dv_elem_prefix_\{{ivar.name}}).each do |candidate|
+                              next if ::Shell::AutoComplete::Completion::Directive.directive?(candidate)
+                              if candidate.starts_with?(dv_elem_prefix_\{{ivar.name}})
+                                result << dv_elem_base_\{{ivar.name}} + candidate
+                              end
+                            end
+                          else
+                            \{{dv_el_q}}.__arg_complete(current).each { |candidate| result << candidate }
+                          end
+                        \{% else %}
+                          \{{dv_el_q}}.__arg_complete(current).each { |candidate| result << candidate }
+                        \{% end %}
+                      \{% end %}
+                    \{% else %}
+                      \{% dv_inner = fann[:transformer_type] || dv_inner_res %}
+                      \{% dv_inner_q = fann[:transformer_type] || ((dv_inner_res.stringify.starts_with?("::") || dv_inner_res.stringify.starts_with?("(")) ? dv_inner_res : "::#{dv_inner_res}".id) %}
+                      \{% if dv_inner.resolve < ::Enum || dv_inner.resolve.class.methods.any? { |m| m.name.stringify == "__arg_complete" } %}
+                        \{{dv_inner_q}}.__arg_complete(current).each { |candidate| result << candidate }
+                      \{% end %}
+                    \{% end %}
+                  \{% end %}
+                  return result
+                end
+              \{% end %}
+            \{% end %}
+          \{% end %}
+          # Ordered-flag-group spellings take a free-form value: no derived
+          # candidates, but the value position must not fall through to
+          # flag-name completion.
+          \{% for meth in ([@type] + @type.ancestors).map(&.methods).reduce([] of Def) { |acc, meths| acc + meths } %}
+            \{% if gann = meth.annotation(::Shell::AutoComplete::OrderedFlagGroupDef) %}
+              \{% for spelling in gann[:spellings] %}
+                return result if prev == \{{spelling}}
+              \{% end %}
+            \{% end %}
+          \{% end %}
+        end
 
         # Positional-argument completion. Only engaged when the cursor is not on a
         # flag (`current` not starting with "-"); the slot the cursor maps to is
@@ -1053,7 +1174,7 @@ module Shell::AutoComplete
                       pos_ctx = ::Shell::AutoComplete::CompletionContext.new(words: words, cword: cword)
                       self.\{{cw.id}}(pos_ctx).each { |candidate| result << candidate }
                       return result
-                    \{% elsif p_inner.resolve.class.methods.any? { |m| m.name.stringify == "__arg_complete" } %}
+                    \{% elsif p_inner.resolve < ::Enum || p_inner.resolve.class.methods.any? { |m| m.name.stringify == "__arg_complete" } %}
                       \{{p_inner_q}}.__arg_complete(current).each { |candidate| result << candidate }
                       return result
                     \{% end %}
@@ -1077,7 +1198,7 @@ module Shell::AutoComplete
                       var_ctx = ::Shell::AutoComplete::CompletionContext.new(words: words, cword: cword)
                       self.\{{cw.id}}(var_ctx).each { |candidate| result << candidate }
                       return result
-                    \{% elsif v_inner.resolve.class.methods.any? { |m| m.name.stringify == "__arg_complete" } %}
+                    \{% elsif v_inner.resolve < ::Enum || v_inner.resolve.class.methods.any? { |m| m.name.stringify == "__arg_complete" } %}
                       \{{v_inner_q}}.__arg_complete(current).each { |candidate| result << candidate }
                       return result
                     \{% end %}
