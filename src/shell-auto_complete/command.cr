@@ -563,15 +563,19 @@ module Shell::AutoComplete
                     \{% end %}
                     \{% per_flag_transform_method = "__arg_transform_" + ivar.name.stringify %}
                     \{% has_per_flag_transform = @type.class.methods.any? { |m| m.name.stringify == per_flag_transform_method } %}
-                    \{% if has_per_flag_transform %}
-                      transformed_value = self.\{{per_flag_transform_method.id}}(v)
-                    \{% elsif tw = fann[:transform_with] %}
-                      transformed_value = self.\{{tw.id}}(v)
-                    \{% elsif fann[:transformer_type] %}
-                      transformed_value = \{{fann[:transformer_type]}}.__arg_transform(v, **\{{fann[:forwarded_opts]}})
-                    \{% else %}
-                      transformed_value = \{{inner_type_q}}.__arg_transform(v, **\{{fann[:forwarded_opts]}})
-                    \{% end %}
+                    begin
+                      \{% if has_per_flag_transform %}
+                        transformed_value = self.\{{per_flag_transform_method.id}}(v)
+                      \{% elsif tw = fann[:transform_with] %}
+                        transformed_value = self.\{{tw.id}}(v)
+                      \{% elsif fann[:transformer_type] %}
+                        transformed_value = \{{fann[:transformer_type]}}.__arg_transform(v, **\{{fann[:forwarded_opts]}})
+                      \{% else %}
+                        transformed_value = \{{inner_type_q}}.__arg_transform(v, **\{{fann[:forwarded_opts]}})
+                      \{% end %}
+                    rescue scalar_error : ::ArgumentError
+                      raise ::Shell::AutoComplete::ParseError.new(\{{fann[:canonical]}} + ": " + (scalar_error.message || "invalid value"))
+                    end
                     inst.\{{ivar.name}} = transformed_value
                     \{% inner_type_v = inner_type %}
                     \{% per_flag_validate_method = "__arg_validate_" + ivar.name.stringify %}
@@ -589,9 +593,9 @@ module Shell::AutoComplete
                     when true
                       # ok
                     when String
-                      raise ::Shell::AutoComplete::ParseError.new(result_v.as(String))
+                      raise ::Shell::AutoComplete::ParseError.new(\{{fann[:canonical]}} + ": " + result_v.as(String))
                     when false
-                      raise ::Shell::AutoComplete::ParseError.new("not a valid \{{ivar.name}}")
+                      raise ::Shell::AutoComplete::ParseError.new(\{{fann[:canonical]}} + ": not a valid \{{ivar.name}}")
                     end
                     \{% if is_nullable && !inner_is_string %}
                       end
@@ -678,7 +682,7 @@ module Shell::AutoComplete
               when true
                 # ok
               when String
-                raise ::Shell::AutoComplete::ParseError.new(result_v_pos_\{{ivar.name}}.as(String))
+                raise ::Shell::AutoComplete::ParseError.new(\{{ivar.name.stringify}} + ": " + result_v_pos_\{{ivar.name}}.as(String))
               when false
                 raise ::Shell::AutoComplete::ParseError.new("not a valid \{{ivar.name}}")
               end
@@ -753,7 +757,7 @@ module Shell::AutoComplete
               when true
                 # ok
               when String
-                raise ::Shell::AutoComplete::ParseError.new(result_v_pos_\{{ivar.name}}.as(String))
+                raise ::Shell::AutoComplete::ParseError.new(\{{ivar.name.stringify}} + ": " + result_v_pos_\{{ivar.name}}.as(String))
               when false
                 raise ::Shell::AutoComplete::ParseError.new("not a valid \{{ivar.name}}")
               end
