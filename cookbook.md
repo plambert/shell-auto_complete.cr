@@ -450,6 +450,10 @@ this in place, `tool --format json list` routes to `list` (which imported `--for
 `tool --format json status` is rejected at `status` (which did not); the shard learns each
 subcommand's flag arities to route past a flag before the subcommand word.
 
+Declare the catalog at the top level, not inside a `module`: `common_flag` defines its replay macro
+where it expands and `import_flags` resolves it from the command class, so nesting it makes it
+invisible even to commands in the same module.
+
 ### Share global flags with every subcommand
 
 ```crystal

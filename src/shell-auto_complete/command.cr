@@ -577,7 +577,14 @@ module Shell::AutoComplete
                       raise ::Shell::AutoComplete::ParseError.new(\{{fann[:canonical]}} + ": " + (scalar_error.message || "invalid value"))
                     end
                     inst.\{{ivar.name}} = transformed_value
-                    \{% inner_type_v = inner_type %}
+                    # `ivar.type` is the *storage* type, which for a remapped
+                    # flag (`Types::PositiveInt` stored as `Int32`) is not the
+                    # type carrying `__arg_validate`. Prefer the declared type
+                    # recorded in `transformer_type`, exactly as the transform
+                    # dispatch above and the positional path do — otherwise a
+                    # synthetic type's validator is silently skipped.
+                    \{% inner_type_v = fann[:transformer_type] || inner_type %}
+                    \{% inner_type_v_q = fann[:transformer_type] || inner_type_q %}
                     \{% per_flag_validate_method = "__arg_validate_" + ivar.name.stringify %}
                     \{% has_per_flag_validate = @type.class.methods.any? { |m| m.name.stringify == per_flag_validate_method } %}
                     \{% if has_per_flag_validate %}
@@ -585,7 +592,7 @@ module Shell::AutoComplete
                     \{% elsif vw = fann[:validate_with] %}
                       result_v = self.\{{vw.id}}(transformed_value)
                     \{% elsif inner_type_v.resolve.class.methods.any? { |m| m.name.stringify == "__arg_validate" } %}
-                      result_v = \{{inner_type_q}}.__arg_validate(transformed_value, **\{{fann[:forwarded_opts]}})
+                      result_v = \{{inner_type_v_q}}.__arg_validate(transformed_value, **\{{fann[:forwarded_opts]}})
                     \{% else %}
                       result_v = true
                     \{% end %}
@@ -705,7 +712,43 @@ module Shell::AutoComplete
               variadic_collected_\{{variadic_ivar.name}} = [] of \{{var_storage_type_q}}
               while positional_stack.size > \{{trailing_ivars.size}}
                 raw_var_tok = positional_stack.shift
-                variadic_collected_\{{variadic_ivar.name}} << \{{var_transform_type_q}}.__arg_transform(raw_var_tok)
+                # `transform_with:`/`validate_with:` apply per element here, the
+                # same way they do on a scalar positional. The macro accepts
+                # both options on a variadic declaration, so skipping them made
+                # a declared transform a silent no-op.
+                begin
+                  \{% if var_tw = variadic_ann[:transform_with] %}
+                    var_elem_\{{variadic_ivar.name}} = self.\{{var_tw.id}}(raw_var_tok)
+                  \{% else %}
+                    var_elem_\{{variadic_ivar.name}} = \{{var_transform_type_q}}.__arg_transform(raw_var_tok)
+                  \{% end %}
+                rescue var_error : ::ArgumentError
+                  raise ::Shell::AutoComplete::ParseError.new(
+                    \{{variadic_ivar.name.stringify}} + ": " + (var_error.message || "invalid value")
+                  )
+                end
+                \{% if var_vw = variadic_ann[:validate_with] %}
+                  var_check_\{{variadic_ivar.name}} = self.\{{var_vw.id}}(var_elem_\{{variadic_ivar.name}})
+                \{% else %}
+                  \{% var_validate_type = variadic_ann[:transformer_type] || var_storage_type %}
+                  \{% var_validate_type_q = variadic_ann[:transformer_type] || var_storage_type_q %}
+                  \{% if var_validate_type.resolve.class.methods.any? { |m| m.name.stringify == "__arg_validate" } %}
+                    var_check_\{{variadic_ivar.name}} = \{{var_validate_type_q}}.__arg_validate(var_elem_\{{variadic_ivar.name}}, **\{{variadic_ann[:forwarded_opts]}})
+                  \{% else %}
+                    var_check_\{{variadic_ivar.name}} = true
+                  \{% end %}
+                \{% end %}
+                case var_check_\{{variadic_ivar.name}}
+                when true
+                  # ok
+                when String
+                  raise ::Shell::AutoComplete::ParseError.new(
+                    \{{variadic_ivar.name.stringify}} + ": " + var_check_\{{variadic_ivar.name}}.as(String)
+                  )
+                when false
+                  raise ::Shell::AutoComplete::ParseError.new("not a valid \{{variadic_ivar.name}}")
+                end
+                variadic_collected_\{{variadic_ivar.name}} << var_elem_\{{variadic_ivar.name}}
               end
             \{% end %}
             \{% var_actual_min = variadic_ann[:min] %}
@@ -884,19 +927,6 @@ module Shell::AutoComplete
       def self.completion_candidates(words : Array(String), cword : Int32, current : String, prev : String) : Array(String)
         result = [] of ::String
 
-        # Subcommand position: cword == 1 and subcommands exist.
-        \{% if @type.has_constant?("SUBCOMMANDS") %}
-          if cword == 1
-            SUBCOMMANDS.each do |(sub_name, sub_klass)|
-              result << sub_name if sub_name.starts_with?(current)
-              sub_klass.command_aliases.each do |sub_alias|
-                result << sub_alias if sub_alias.starts_with?(current)
-              end
-            end
-            return result unless result.empty?
-          end
-        \{% end %}
-
         # Check if prev word is a flag that takes a value — emit value candidates.
         # complete_with: and per-flag __arg_complete_<name> dispatch. This runs
         # before every derived-candidate block so an explicit completer always
@@ -1054,12 +1084,49 @@ module Shell::AutoComplete
                 if dv_names_\{{ivar.name}}.includes?(prev)
                   \{% dv_fwd = fann[:forwarded_opts] %}
                   \{% dv_choices = dv_fwd.is_a?(NamedTupleLiteral) ? dv_fwd[:choices] : nil %}
+                  # `choices:` may be written as a constant reference rather
+                  # than an array literal. Validation resolves it at runtime,
+                  # so without resolving it here too the flag would validate
+                  # against the list while completing nothing.
+                  \{% if dv_choices.is_a?(Path) %}
+                    \{% dv_choices_res = dv_choices.resolve? %}
+                    \{% dv_choices = dv_choices_res if dv_choices_res.is_a?(ArrayLiteral) %}
+                  \{% end %}
                   \{% if dv_choices.is_a?(ArrayLiteral) %}
-                    \{% for choice in dv_choices %}
-                      \{% choice_str = choice.is_a?(StringLiteral) ? choice : choice.id.stringify %}
-                      if \{{choice_str}}.starts_with?(current)
-                        result << \{{choice_str}}
+                    \{% dv_c_inner = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
+                    \{% dv_c_base = dv_c_inner.id.stringify.gsub(/\A::/, "").split("(")[0] %}
+                    \{% dv_c_delim = fann[:delimiter] %}
+                    \{% if ["Array", "Set"].includes?(dv_c_base) && dv_c_delim.is_a?(StringLiteral) %}
+                      # A split-on-delimiter collection completes the element
+                      # after the last delimiter, keeping the earlier elements
+                      # as the candidate's prefix — same shape as the
+                      # type-derived branch below.
+                      if dv_c_idx_\{{ivar.name}} = current.rindex(\{{dv_c_delim}})
+                        dv_c_start_\{{ivar.name}} = dv_c_idx_\{{ivar.name}} + \{{dv_c_delim}}.size
+                        dv_c_prefix_\{{ivar.name}} = current[dv_c_start_\{{ivar.name}}..]
+                        dv_c_base_\{{ivar.name}} = current[0, dv_c_start_\{{ivar.name}}]
+                        dv_c_seen_\{{ivar.name}} = dv_c_base_\{{ivar.name}}.split(\{{dv_c_delim}})
+                        \{% for choice in dv_choices %}
+                          \{% choice_str = choice.is_a?(StringLiteral) ? choice : choice.id.stringify %}
+                          if \{{choice_str}}.starts_with?(dv_c_prefix_\{{ivar.name}}) && !dv_c_seen_\{{ivar.name}}.includes?(\{{choice_str}})
+                            result << dv_c_base_\{{ivar.name}} + \{{choice_str}}
+                          end
+                        \{% end %}
+                      else
+                        \{% for choice in dv_choices %}
+                          \{% choice_str = choice.is_a?(StringLiteral) ? choice : choice.id.stringify %}
+                          if \{{choice_str}}.starts_with?(current)
+                            result << \{{choice_str}}
+                          end
+                        \{% end %}
                       end
+                    \{% else %}
+                      \{% for choice in dv_choices %}
+                        \{% choice_str = choice.is_a?(StringLiteral) ? choice : choice.id.stringify %}
+                        if \{{choice_str}}.starts_with?(current)
+                          result << \{{choice_str}}
+                        end
+                      \{% end %}
                     \{% end %}
                   \{% else %}
                     \{% dv_inner_res = ivar.type.union? ? ivar.type.union_types.reject { |t| t == Nil }[0] : ivar.type %}
@@ -1118,6 +1185,47 @@ module Shell::AutoComplete
             \{% end %}
           \{% end %}
         end
+
+        # Subcommand-name completion. This sits after the flag-value blocks so a
+        # flag's value position never resolves to a subcommand name, and those
+        # blocks return before reaching here whenever `prev` takes a value.
+        #
+        # A routing command cannot also declare positionals (that pairing is a
+        # compile error), so every word before the cursor is either a flag, a
+        # value a flag consumed, or the subcommand word itself — and the
+        # completion dispatcher already descends past the subcommand word and
+        # removes it. The cursor is therefore still at the subcommand slot
+        # unless a subcommand word survives before it. Gating on `cword == 1`
+        # instead meant any preceding flag silenced this entirely, so
+        # `app --verbose <TAB>` offered nothing and `app --verbose sub <TAB>`
+        # offered no sub-subcommands.
+        \{% if @type.has_constant?("SUBCOMMANDS") %}
+          unless current.starts_with?("-")
+            sub_slot_taken = false
+            (1...cword).each do |sub_scan_index|
+              break if sub_scan_index >= words.size
+              sub_token = words[sub_scan_index]
+              # Past `--` every token is positional, never a subcommand word.
+              if sub_token == "--"
+                sub_slot_taken = true
+                break
+              end
+              if subcommand_named(sub_token)
+                sub_slot_taken = true
+                break
+              end
+            end
+            unless sub_slot_taken
+              SUBCOMMANDS.each do |(sub_name, sub_klass)|
+                result << sub_name if sub_name.starts_with?(current)
+                sub_klass.command_aliases.each do |sub_alias|
+                  result << sub_alias if sub_alias.starts_with?(current)
+                end
+              end
+              return result unless result.empty?
+            end
+          end
+        \{% end %}
 
         # Positional-argument completion. Only engaged when the cursor is not on a
         # flag (`current` not starting with "-"); the slot the cursor maps to is

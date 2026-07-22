@@ -244,6 +244,11 @@ import_flags :format, :quiet
 subset inside a command, where each behaves exactly as a directly declared flag (registry, help,
 completion, duplicate detection). Different commands import different subsets.
 
+Call `common_flag` at the **top level**, not inside a `module`. It defines its replay macro in the
+scope where it expands, while `import_flags` resolves that macro from the command class — so a
+catalog nested in a module is invisible even to commands in that same module
+(`undefined local variable '__sac_common_flag_<name>'`).
+
 ### Ordered flag groups
 
 ```crystal

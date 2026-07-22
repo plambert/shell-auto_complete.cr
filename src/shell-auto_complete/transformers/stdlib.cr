@@ -5,7 +5,12 @@ require "socket"
 # :nodoc:
 class URI
   def self.__arg_transform(value : String, **opts) : URI
+    # URI::Error is not an ArgumentError, so without this it escapes the
+    # parser's conversion and reaches the user as an unhandled exception
+    # with a stack trace instead of a parse error naming the flag.
     URI.parse(value)
+  rescue error : URI::Error
+    raise ArgumentError.new(error.message || "invalid URI: #{value}")
   end
 end
 

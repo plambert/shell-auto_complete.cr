@@ -423,10 +423,16 @@ module Shell::AutoComplete
         immediate: {{ opts[:immediate] }},
       )]
       {% if storage_remapped %}
+        # The declared type is remapped to the transformer's storage type, so
+        # the declaration is rebuilt rather than spliced whole — carry the
+        # declared default across, or a flag like
+        # `flag root : Types::DirPath = Path.new("/")` would emit a property
+        # with no initializer and fail to compile. The default is written in
+        # terms of the storage type, as the property it initializes is.
         {% if decl_nullable %}
-          property {{ decl.var }} : {{ storage_inner_q }}?
+          property {{ decl.var }} : {{ storage_inner_q }}?{% unless decl.value.is_a?(Nop) %} = {{ decl.value }}{% end %}
         {% else %}
-          property {{ decl.var }} : {{ storage_inner_q }}
+          property {{ decl.var }} : {{ storage_inner_q }}{% unless decl.value.is_a?(Nop) %} = {{ decl.value }}{% end %}
         {% end %}
       {% else %}
         property {{ decl }}
