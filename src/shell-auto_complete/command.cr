@@ -577,7 +577,14 @@ module Shell::AutoComplete
                       raise ::Shell::AutoComplete::ParseError.new(\{{fann[:canonical]}} + ": " + (scalar_error.message || "invalid value"))
                     end
                     inst.\{{ivar.name}} = transformed_value
-                    \{% inner_type_v = inner_type %}
+                    # `ivar.type` is the *storage* type, which for a remapped
+                    # flag (`Types::PositiveInt` stored as `Int32`) is not the
+                    # type carrying `__arg_validate`. Prefer the declared type
+                    # recorded in `transformer_type`, exactly as the transform
+                    # dispatch above and the positional path do — otherwise a
+                    # synthetic type's validator is silently skipped.
+                    \{% inner_type_v = fann[:transformer_type] || inner_type %}
+                    \{% inner_type_v_q = fann[:transformer_type] || inner_type_q %}
                     \{% per_flag_validate_method = "__arg_validate_" + ivar.name.stringify %}
                     \{% has_per_flag_validate = @type.class.methods.any? { |m| m.name.stringify == per_flag_validate_method } %}
                     \{% if has_per_flag_validate %}
@@ -585,7 +592,7 @@ module Shell::AutoComplete
                     \{% elsif vw = fann[:validate_with] %}
                       result_v = self.\{{vw.id}}(transformed_value)
                     \{% elsif inner_type_v.resolve.class.methods.any? { |m| m.name.stringify == "__arg_validate" } %}
-                      result_v = \{{inner_type_q}}.__arg_validate(transformed_value, **\{{fann[:forwarded_opts]}})
+                      result_v = \{{inner_type_v_q}}.__arg_validate(transformed_value, **\{{fann[:forwarded_opts]}})
                     \{% else %}
                       result_v = true
                     \{% end %}

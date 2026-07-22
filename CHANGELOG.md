@@ -2,6 +2,13 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Fixed
+
+- A synthetic type's validator now runs on scalar flags. `Types::PositiveInt`, `NonNegativeInt`, `Percentage`, and `EnvVar` transform to a storage type that differs from the declared type (`PositiveInt` is stored as `Int32`), and the scalar-flag validate dispatch resolved `__arg_validate` against the *storage* type, which does not define one — so the validator was silently skipped and `--limit 0` on a `PositiveInt` flag parsed successfully. The dispatch now prefers the declared type recorded in `transformer_type`, matching what the transform dispatch beside it and the positional path already did. Positionals were never affected. Declaring one of these types as a flag is the only way to hit this; the modules themselves always validated when called directly, which is what the existing specs covered.
+- A storage-remapped flag now keeps its declared default. `flag root : Types::DirPath = Path.new("/")` emitted a property with no initializer and failed to compile with "not initialized in all of the 'initialize' methods", because the remapped branch rebuilt the declaration from the property name and type and dropped the default. Affects every type whose transformer remaps storage: `Path`, `File`, `Dir`, `DirPath`, `PositiveInt`, `NonNegativeInt`, `Percentage`, `EpochTime`, `Date`, `EnvVar`.
+
 ## [2.4.0] - 2026-07-21
 
 ### Added
