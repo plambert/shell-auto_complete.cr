@@ -1037,14 +1037,19 @@ module Shell::AutoComplete
         "--shell-completion"
       end
 
-      def self.completion_script(shell : Symbol) : String
+      # Generates the shell completion script. *executable*, when given, is the
+      # command the generated callback invokes for `__complete` — pass an
+      # absolute path so completion runs a specific binary regardless of `PATH`
+      # (useful for a dev build); the command name still registers the
+      # completion. Defaults to the command name.
+      def self.completion_script(shell : Symbol, executable : String? = nil) : String
         case shell
         when :bash
-          ::Shell::AutoComplete::Completion::Bash.render(self)
+          ::Shell::AutoComplete::Completion::Bash.render(self, executable)
         when :zsh
-          ::Shell::AutoComplete::Completion::Zsh.render(self)
+          ::Shell::AutoComplete::Completion::Zsh.render(self, executable)
         when :fish
-          ::Shell::AutoComplete::Completion::Fish.render(self)
+          ::Shell::AutoComplete::Completion::Fish.render(self, executable)
         else
           raise ArgumentError.new("unsupported shell: #{shell}")
         end

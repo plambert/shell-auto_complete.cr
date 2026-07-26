@@ -7,6 +7,7 @@ end
 require "./shell-auto_complete/candidate"
 require "./shell-auto_complete/completion_context"
 require "./shell-auto_complete/completion/directive"
+require "./shell-auto_complete/completion/quote"
 require "./shell-auto_complete/completion/positional"
 require "./shell-auto_complete/annotations"
 require "./shell-auto_complete/errors"

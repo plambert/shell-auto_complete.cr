@@ -1,13 +1,18 @@
 module Shell::AutoComplete::Completion
   module Zsh
-    def self.render(klass) : String
+    # *executable*, when given, is the command the callback invokes for
+    # `__complete` (an absolute path); the command name still registers the
+    # completion. Defaults to the command name.
+    def self.render(klass, executable : String? = nil) : String
       cmd = klass.command_name
       fn = "_#{cmd.gsub(/[^A-Za-z0-9_]/, "_")}"
+      reg = Quote.posix(cmd)
+      call = Quote.posix(executable || cmd)
       script = String.build do |io|
         io << fn << "() {\n"
         io << "  local -a candidates\n"
         io << "  local IFS=$'\\n'\n"
-        io << "  candidates=( $(" << cmd << ' '
+        io << "  candidates=( $(" << call << ' '
         io << %q("__complete" "$CURRENT" "${words[@]}" 2>/dev/null)
         io << ") )\n"
         io << "  if (( ${#candidates} == 1 )); then\n"
@@ -31,7 +36,7 @@ module Shell::AutoComplete::Completion
         io << "  fi\n"
         io << "  compadd -- $candidates\n"
         io << "}\n"
-        io << "compdef " << fn << ' ' << cmd << '\n'
+        io << "compdef " << fn << ' ' << reg << '\n'
       end
       script
     end

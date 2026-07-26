@@ -1,13 +1,18 @@
 module Shell::AutoComplete::Completion
   module Fish
-    def self.render(klass) : String
+    # *executable*, when given, is the command the callback invokes for
+    # `__complete` (an absolute path); the command name still registers the
+    # completion. Defaults to the command name.
+    def self.render(klass, executable : String? = nil) : String
       cmd = klass.command_name
       fn = "__sac_#{cmd.gsub(/[^A-Za-z0-9_]/, "_")}_complete"
+      reg = Quote.fish(cmd)
+      call = Quote.fish(executable || cmd)
       script = String.build do |io|
         io << "function " << fn << '\n'
         io << "  set -l tokens (commandline -opc)\n"
         io << "  set -l current (commandline -ct)\n"
-        io << "  set -l out (" << cmd << ' '
+        io << "  set -l out (" << call << ' '
         io << %q(__complete (count $tokens) $tokens $current 2>/dev/null)
         io << ")\n"
         io << "  if test (count $out) -eq 1\n"
@@ -33,7 +38,7 @@ module Shell::AutoComplete::Completion
         io << "    echo $line\n"
         io << "  end\n"
         io << "end\n"
-        io << "complete -c " << cmd << " -f -a \"(" << fn << ")\"\n"
+        io << "complete -c " << reg << " -f -a \"(" << fn << ")\"\n"
       end
       script
     end

@@ -344,8 +344,17 @@ mytool --shell-completion zsh  > ~/.zsh/completions/_mytool
 mytool --shell-completion fish > ~/.config/fish/completions/mytool.fish
 ```
 
-Completion covers subcommands, flag names (with alias filtering), `choices:`/enum values, `@[Flags]`
-trailing commas, dynamic `complete_with:` candidates, and native filesystem completion for
+By default the generated script's callback invokes the command by name, so it resolves through
+`PATH` — the right behavior for an installed script. For testing a dev build, add `--absolute` (or
+`-a`): the callback then invokes this exact binary by its resolved absolute path, so
+`eval "$(bin/mytool --shell-completion bash --absolute)"` completes against `bin/mytool` even when a
+different `mytool` is on `PATH`. The command name still registers the completion, so re-`eval` the
+installed script when you're done. Don't bake `--absolute` into an installed script — the path goes
+stale when the binary moves.
+
+Completion covers subcommands (declared and external), flag names (with alias filtering),
+`choices:`/enum values, `@[Flags]` trailing commas, dynamic `complete_with:` candidates, embedded
+commands (`delimited_flag ..., external_command: true`), and native filesystem completion for
 `Path`/`File`/`Dir`.
 
 Using `String`, the shell completion won't complete anything. If you are expecting one of a fixed

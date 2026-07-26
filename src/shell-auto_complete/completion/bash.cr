@@ -1,8 +1,14 @@
 module Shell::AutoComplete::Completion
   module Bash
-    def self.render(klass) : String
+    # *executable*, when given, is the command the callback invokes for
+    # `__complete` (an absolute path, so completion runs a specific binary
+    # regardless of `PATH`); the command name still registers the completion.
+    # Defaults to the command name.
+    def self.render(klass, executable : String? = nil) : String
       cmd = klass.command_name
       fn = "_#{cmd.gsub(/[^A-Za-z0-9_]/, "_")}"
+      reg = Quote.posix(cmd)
+      call = Quote.posix(executable || cmd)
       files = Directive::FILES
       dirs = Directive::DIRS
       command = Directive::COMMAND
@@ -21,7 +27,7 @@ module Shell::AutoComplete::Completion
         #{fn}() {
           local out cur line payload
           cur="${COMP_WORDS[COMP_CWORD]}"
-          out=$(#{cmd} __complete "$COMP_CWORD" "${COMP_WORDS[@]}" 2>/dev/null)
+          out=$(#{call} __complete "$COMP_CWORD" "${COMP_WORDS[@]}" 2>/dev/null)
           COMPREPLY=()
           case "$out" in
             #{files})
@@ -60,7 +66,7 @@ module Shell::AutoComplete::Completion
             [ -n "$line" ] && COMPREPLY+=( "$line" )
           done < <(IFS=$'\\n'; compgen -W "$out" -- "$cur")
         }
-        complete -F #{fn} #{cmd}\n
+        complete -F #{fn} #{reg}\n
         BASH
     end
   end
