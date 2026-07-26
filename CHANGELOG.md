@@ -2,6 +2,20 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Fixed
+
+- The generated completion scripts now shell-quote the command name wherever it is embedded (the `__complete` callback and the `complete`/`compdef`/`complete -c` registration). Previously the name — which comes from `name:` or `File.basename(PROGRAM_NAME)`, so it can hold spaces or shell metacharacters — was interpolated raw: a name with a space split into two words, a `>` turned the callback into a redirection that created a file on every TAB, and a name containing `$(...)`/backticks/`;` executed when the script was `eval`'d. Only the generated function name was sanitized. The name is now single-quoted (POSIX-escaped for bash/zsh, fish-escaped for fish), so the script is well-formed and injection-safe for any name.
+
+### Added
+
+- `--shell-completion <shell> --absolute` (or `-a`): bakes the running binary's resolved absolute path into the completion callback, so the generated script invokes that exact executable for `__complete` instead of resolving the command through `PATH`. Useful for testing a dev build — `eval "$(bin/tool --shell-completion bash --absolute)"` completes against `bin/tool` even when another `tool` is installed. The command name still registers the completion. The path is exposed programmatically via `completion_script(shell, executable:)`.
+
+- `delimited_flag` gains `external_command: true`, which marks the captured run as a command line for completion: inside an un-terminated capture the shell completes the first word as a command name and later words with that command's own completion (falling back to file completion), delegating through `_command_offset` (bash), `_normal` (zsh), and `complete -C` (fish). It emits a new `COMMAND` completion directive carrying the already-typed captured words as tab-separated payload; parsing is unchanged.
+- `delimited_flag`: captures a run of raw argv tokens into a collection, ending at a delimiter (default `--`, discarded), then resumes normal parsing on the rest of the line. Every token in the run is appended verbatim, so flag-looking tokens are taken literally — the `env`/`xargs`/`time` shape where a whole sub-command is embedded, e.g. `tool --command echo hello -- --json path` puts `["echo", "hello"]` in the flag and still parses `--json` as a flag. The declared type only has to answer `.new` and `<<(String)` (`Array(String)`, `Set(String)`, or a custom type); the value is built by `.new` then one `<<` per token. If the delimiter never appears, capture runs to the end of argv; an absent flag is an empty `.new` (or `nil` for a nilable type). The delimiter is configurable with `delimiter:`. Spellings register in the duplicate-name checker, the flag renders in help with a `<args>... --` placeholder, and completion offers the spelling as a flag name while suppressing candidates inside an un-terminated capture. Composes with subcommands through `parent:` inheritance — the routing walk skips the captured run to find the subcommand word.
+- `external_subcommands`: git-style external subcommand dispatch, declared on a root command. A subcommand word matching no declared subcommand is looked up on `PATH` as `<command_name>-<word>` and, if found, the process is replaced (`exec`) with it, passing every argument after the word through untouched. Declared subcommands take precedence; a word containing a path separator is never looked up; and a miss raises the normal `unknown subcommand` error. It enables routing even with no declared subcommands, so a pure PATH-dispatch tool works. Discovered external subcommands are offered in shell completion beside the declared ones. Declaring it on a `parent:`-derived command is a compile error, since the executable name is built from one tool prefix. A `search_path:` option restricts the lookup to a fixed, colon-separated directory list instead of `PATH`, with relative entries resolved against the running binary's directory (so `search_path: "commands:../lib/commands:/etc/tool/commands"` searches those three, in order, regardless of `PATH`); both dispatch and completion honor it.
+
 ## [2.4.1] - 2026-07-22
 
 ### Fixed

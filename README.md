@@ -225,6 +225,21 @@ Each alias routes to the command exactly as its canonical name does, is offered 
 is listed beside the name in the parent's help (`move, mv, rename`). A canonical name match on any
 subcommand wins over an alias, so an alias can never shadow another command's real name.
 
+`external_subcommands` (on a root command's block) adds git-style external dispatch: a subcommand
+word matching no declared subcommand is looked up on `PATH` as `<command_name>-<word>`, and if found
+the process is replaced (`exec`) with it, passing every argument after the word. Declared
+subcommands always win; a word containing a path separator is never looked up; and when nothing is
+found the usual `unknown subcommand` error is raised. It works with declared subcommands or on its
+own (a pure PATH-dispatch tool), and discovered external subcommands are offered in completion
+alongside declared ones. Declaring it on a `parent:`-derived command is a compile error.
+
+`search_path:` restricts the lookup to a fixed, colon-separated directory list instead of `PATH`. A
+relative entry resolves against the directory holding the running binary, so
+`external_subcommands search_path: "commands:../lib/commands:/etc/tool/commands"` for a binary at
+`/opt/tool/bin/tool` searches `/opt/tool/bin/commands`, `/opt/tool/lib/commands`, and
+`/etc/tool/commands`, in order, regardless of the caller's `PATH`. Both dispatch and completion use
+it.
+
 ### Inheriting flags
 
 `parent: OtherCommand` on the `command` macro makes a command inherit every flag the parent declares
@@ -261,6 +276,34 @@ end
 For the rsync/tar shape where the interleaving between flags is the semantics. The block runs once
 per occurrence in command-line order; raising `ArgumentError` becomes a parse error. Value-taking
 members only.
+
+### Delimited flags
+
+```crystal
+delimited_flag command : Array(String), "--command", "-c", "Command to run"
+```
+
+Captures a run of raw argv tokens into a collection, ending at a delimiter (default `--`, which is
+discarded). Every token in the run is appended verbatim, so flag-looking tokens are taken literally
+— the `env`/`xargs`/`time` shape where a whole sub-command is embedded:
+
+```text
+tool --command echo hello -- --json path
+#   @command => ["echo", "hello"]      (built with .new then <<(String) per token)
+#   @json    => true                   (parsing resumes after the delimiter)
+```
+
+The declared type only has to answer `.new` and `<<(String)` (`Array(String)`, `Set(String)`, or a
+custom type). If the delimiter never appears, capture runs to the end of argv; when the flag is
+absent the property is an empty `.new` (or `nil`, if the type is nilable). The delimiter is
+configurable with `delimiter:`. Only the space-separated form is captured — `--command=x` is not a
+delimited invocation. Composes with subcommands through `parent:` inheritance: the routing walk
+skips the capture to find the subcommand word.
+
+`external_command: true` marks the captured value as a command line for completion: inside the
+capture the shell completes the first word as a command name and the rest with that command's own
+completion (falling back to file completion) — via `_command_offset` (bash), `_normal` (zsh), and
+`complete -C` (fish). It changes completion only, not parsing.
 
 ### before_run hooks
 
@@ -301,8 +344,17 @@ mytool --shell-completion zsh  > ~/.zsh/completions/_mytool
 mytool --shell-completion fish > ~/.config/fish/completions/mytool.fish
 ```
 
-Completion covers subcommands, flag names (with alias filtering), `choices:`/enum values, `@[Flags]`
-trailing commas, dynamic `complete_with:` candidates, and native filesystem completion for
+By default the generated script's callback invokes the command by name, so it resolves through
+`PATH` — the right behavior for an installed script. For testing a dev build, add `--absolute` (or
+`-a`): the callback then invokes this exact binary by its resolved absolute path, so
+`eval "$(bin/mytool --shell-completion bash --absolute)"` completes against `bin/mytool` even when a
+different `mytool` is on `PATH`. The command name still registers the completion, so re-`eval` the
+installed script when you're done. Don't bake `--absolute` into an installed script — the path goes
+stale when the binary moves.
+
+Completion covers subcommands (declared and external), flag names (with alias filtering),
+`choices:`/enum values, `@[Flags]` trailing commas, dynamic `complete_with:` candidates, embedded
+commands (`delimited_flag ..., external_command: true`), and native filesystem completion for
 `Path`/`File`/`Dir`.
 
 Using `String`, the shell completion won't complete anything. If you are expecting one of a fixed

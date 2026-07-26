@@ -342,6 +342,37 @@ matched spelling (dashes stripped) and the value. Raising `ArgumentError` from t
 clean parse error. Members render in help and complete like ordinary flags. (Value-taking members
 only; switch members are not yet supported.)
 
+### Capture a whole sub-command, like `time` or `env`
+
+```crystal
+delimited_flag command : Array(String), "--command", "-c", "Command to run"
+```
+
+`delimited_flag` grabs every token after the flag, verbatim, until a delimiter (default `--`, which
+is discarded), then parsing resumes:
+
+```text
+tool --command echo hello -- --json path
+#   @command => ["echo", "hello"]
+#   @json    => true                 (a normal flag again, after the delimiter)
+```
+
+Flag-looking tokens inside the run (`-n`, `--color`) are taken literally, which is the point — you
+are capturing someone else's command line. The declared type just has to answer `.new` and
+`<<(String)`, so `Array(String)` or `Set(String)` both work. If the delimiter never appears, capture
+runs to the end of the line; if the flag is absent, the value is an empty collection (or `nil` for a
+nilable type). Change the delimiter with `delimiter: "END"`. To pair it with subcommands, declare it
+on a base command and inherit with `parent:` — the router skips the captured run to find the
+subcommand word.
+
+Add `external_command: true` to complete the captured run as a command line: the first word
+completes as a command name, and later words use that command's own completion (falling back to
+files). This only affects completion — parsing is unchanged.
+
+```crystal
+delimited_flag command : Array(String), "--command", "Command to run", external_command: true
+```
+
 ## Enums
 
 ### Accept one of an enum's values
@@ -420,6 +451,33 @@ end
 all route to `Move`; every alias is offered in completion and listed beside the canonical name in
 help (`move, mv, rename`). A canonical name always wins over an alias, so an alias can't shadow
 another subcommand's real name.
+
+### Extend a tool with external `tool-foo` executables, like git
+
+```crystal
+Shell::AutoComplete.command Tool, name: "tool", description: "..." do
+  external_subcommands
+  subcommand Build
+end
+```
+
+`external_subcommands` makes an unrecognized subcommand word fall back to `PATH`: `tool deploy a b`
+looks for `tool-deploy` and, if found, replaces the process with it (`exec`), passing `a b` (and any
+flags) straight through. Declared subcommands still win, so `tool build` runs the built-in `Build`.
+A word with a path separator is never looked up, and a miss gives the normal `unknown subcommand`
+error. Discovered externals are also offered in completion. Use it with declared subcommands or
+alone for a pure dispatcher; it may only go on a root command (a `parent:`-derived one is a compile
+error).
+
+To search fixed directories instead of `PATH`, pass `search_path:` — a colon-separated list where
+relative entries resolve against the binary's own directory:
+
+```crystal
+external_subcommands search_path: "commands:../lib/commands:/etc/tool/commands"
+```
+
+For a binary at `/opt/tool/bin/tool` that searches `/opt/tool/bin/commands`,
+`/opt/tool/lib/commands`, and `/etc/tool/commands`, in order, ignoring `PATH` entirely.
 
 ### Let a global flag appear before or after the subcommand
 

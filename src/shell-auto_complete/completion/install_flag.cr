@@ -18,6 +18,17 @@ module Shell::AutoComplete::Completion
         return true
       end
 
+      # `--absolute`/`-a`: bake the running binary's absolute path into the
+      # callback, so the completion invokes this exact executable rather than
+      # whichever one `PATH` resolves — handy for testing a dev build. The
+      # command name still registers the completion.
+      extra = argv[2]?
+      if extra && !["--absolute", "-a"].includes?(extra)
+        stderr.puts "Unknown option: #{extra} (expected --absolute or -a)"
+        return true
+      end
+      executable = extra ? (::Process.executable_path || PROGRAM_NAME) : nil
+
       if stdout.responds_to?(:tty?) && stdout.tty?
         stderr.puts %(Add this to your shell rc: eval "$(#{klass.command_name} #{flag_name} #{shell})")
         return true
@@ -29,7 +40,7 @@ module Shell::AutoComplete::Completion
                   when "fish" then :fish
                   else             raise "unreachable"
                   end
-      stdout.print klass.completion_script(shell_sym)
+      stdout.print klass.completion_script(shell_sym, executable)
       true
     end
   end

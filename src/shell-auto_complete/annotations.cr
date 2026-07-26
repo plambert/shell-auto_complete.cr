@@ -16,4 +16,7 @@ module Shell::AutoComplete
 
   annotation BeforeRunDef
   end
+
+  annotation DelimitedFlagDef
+  end
 end

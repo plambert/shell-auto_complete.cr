@@ -141,6 +141,70 @@ module Shell::AutoComplete
         nil
       end
 
+      # Directories searched for external subcommands (`external_subcommands`).
+      # With `search_path:` set, the configured entries are resolved once —
+      # relative ones against the running binary's directory — so the lookup is
+      # independent of `PATH`. Otherwise the `PATH` directories are used, git
+      # style. Returns an empty list when the feature is off.
+      def self.external_subcommand_dirs : Array(String)
+        \{% if @type.has_constant?("EXTERNAL_SUBCOMMANDS_SEARCH_PATH") %}
+          base = File.dirname(::Process.executable_path || PROGRAM_NAME)
+          EXTERNAL_SUBCOMMANDS_SEARCH_PATH.split(':').reject(&.empty?).map do |entry|
+            File.expand_path(entry, base)
+          end
+        \{% elsif @type.has_constant?("EXTERNAL_SUBCOMMANDS") %}
+          (ENV["PATH"]? || "").split(::Process::PATH_DELIMITER).reject(&.empty?)
+        \{% else %}
+          [] of ::String
+        \{% end %}
+      end
+
+      # Resolves an external subcommand word to an executable path, or nil. A
+      # word with a path separator is never looked up. With `search_path:` the
+      # configured dirs are scanned in order; otherwise `PATH` is used.
+      def self.external_subcommand_path(word : String) : String?
+        return nil if word.empty? || word.includes?('/')
+        target = command_name + "-" + word
+        \{% if @type.has_constant?("EXTERNAL_SUBCOMMANDS_SEARCH_PATH") %}
+          external_subcommand_dirs.each do |dir|
+            candidate = File.join(dir, target)
+            return candidate if File.file?(candidate) && File::Info.executable?(candidate)
+          end
+          nil
+        \{% else %}
+          ::Process.find_executable(target)
+        \{% end %}
+      end
+
+      # External subcommand names (the `<word>` in `<command_name>-<word>`)
+      # discovered on the search path, prefix-filtered, deduplicated, in
+      # search-path order. Used to offer external subcommands in completion.
+      def self.external_subcommand_names(prefix : String) : Array(String)
+        names = [] of ::String
+        \{% if @type.has_constant?("EXTERNAL_SUBCOMMANDS") %}
+          seen = ::Set(::String).new
+          exec_prefix = command_name + "-"
+          external_subcommand_dirs.each do |dir|
+            next unless Dir.exists?(dir)
+            begin
+              Dir.each_child(dir) do |entry|
+                next unless entry.starts_with?(exec_prefix)
+                name = entry[exec_prefix.size..]
+                next if name.empty? || name.includes?('/') || seen.includes?(name)
+                next unless name.starts_with?(prefix)
+                full = File.join(dir, entry)
+                next unless File.file?(full) && File::Info.executable?(full)
+                seen << name
+                names << name
+              end
+            rescue ::File::Error
+              # Unreadable dir on the search path: skip it.
+            end
+          end
+        \{% end %}
+        names
+      end
+
       # Invokes every `before_run` hook in the class hierarchy, parent-first,
       # on this instance. Called by `dispatch` between parse and `run`.
       def run_before_hooks : Nil
@@ -230,6 +294,48 @@ module Shell::AutoComplete
       end
 
       def self.parse(argv : Array(String)) : self
+        # Delimited flags (issue: delimited_flag) capture a run of raw tokens
+        # ending at a delimiter, which is discarded; parsing then resumes on
+        # the remaining tokens. Extract those runs before the normal parser
+        # runs, so flag-looking tokens inside a captured run are taken
+        # literally and never reach the flag parser. The captured values are
+        # held here and assigned once the instance exists.
+        \{% begin %}
+          \{% delimited_ivars = @type.instance_vars.select { |iv| iv.annotation(::Shell::AutoComplete::DelimitedFlagDef) } %}
+          \{% unless delimited_ivars.empty? %}
+            \{% for iv in delimited_ivars %}
+              delimited_captured_\{{iv.name}} = nil
+            \{% end %}
+            delimited_cleaned = [] of ::String
+            delimited_i = 0
+            while delimited_i < argv.size
+              delimited_tok = argv[delimited_i]
+              delimited_matched = false
+              \{% for iv in delimited_ivars %}
+                \{% dann = iv.annotation(::Shell::AutoComplete::DelimitedFlagDef) %}
+                \{% dann_inner = iv.type.union? ? iv.type.union_types.reject { |t| t == Nil }[0] : iv.type %}
+                \{% dann_inner_q = (dann_inner.stringify.starts_with?("::") || dann_inner.stringify.starts_with?("(")) ? dann_inner : "::#{dann_inner}".id %}
+                if !delimited_matched && (\{% for sp, sp_i in dann[:names] %}\{% if sp_i > 0 %} || \{% end %}delimited_tok == \{{sp}}\{% end %})
+                  delimited_matched = true
+                  delimited_value_\{{iv.name}} = \{{dann_inner_q}}.new
+                  delimited_i += 1
+                  while delimited_i < argv.size && argv[delimited_i] != \{{dann[:delimiter]}}
+                    delimited_value_\{{iv.name}} << argv[delimited_i]
+                    delimited_i += 1
+                  end
+                  delimited_i += 1 if delimited_i < argv.size
+                  delimited_captured_\{{iv.name}} = delimited_value_\{{iv.name}}
+                end
+              \{% end %}
+              unless delimited_matched
+                delimited_cleaned << delimited_tok
+                delimited_i += 1
+              end
+            end
+            argv = delimited_cleaned
+          \{% end %}
+        \{% end %}
+
         specs = [] of ::Shell::AutoComplete::Parser::FlagSpec
         \{% for ivar in @type.instance_vars %}
           \{% if (fann = ivar.annotation(::Shell::AutoComplete::FlagDef)) && !@type.constant("OVERRIDDEN_FLAG_IVARS").includes?(ivar.name.stringify) %}
@@ -331,6 +437,13 @@ module Shell::AutoComplete
         result = ::Shell::AutoComplete::Parser.parse_argv(argv, specs, dash_positionals: \{{ @type.instance_vars.any? { |iv| iv.annotation(::Shell::AutoComplete::PositionalsDef) && iv.annotation(::Shell::AutoComplete::PositionalsDef)[:set_delta] } }})
         inst = new
         inst.parsed_occurrences = result[:occurrences]
+        \{% for iv in @type.instance_vars %}
+          \{% if iv.annotation(::Shell::AutoComplete::DelimitedFlagDef) %}
+            if delimited_final_\{{iv.name}} = delimited_captured_\{{iv.name}}
+              inst.\{{iv.name}} = delimited_final_\{{iv.name}}
+            end
+          \{% end %}
+        \{% end %}
         \{% if ([@type] + @type.ancestors).any? { |owner_type| owner_type.methods.any? { |m| m.annotation(::Shell::AutoComplete::OrderedFlagGroupDef) } } %}
           # Ordered flag groups: deliver each member occurrence, in
           # command-line order, to the group's handler. The block records into
@@ -843,6 +956,19 @@ module Shell::AutoComplete
             \{% end %}
           \{% end %}
         \{% end %}
+        \{% for ivar in @type.instance_vars %}
+          \{% if dann = ivar.annotation(::Shell::AutoComplete::DelimitedFlagDef) %}
+            \{% dnames = dann[:names] %}
+            flags << {
+              canonical:   \{{dnames[0]}}.as(::String),
+              aliases:     \{% if dnames.size <= 1 %}([] of ::String)\{% else %}\{{dnames[1..-1]}}.map(&.as(::String))\{% end %},
+              short:       nil.as(::String?),
+              description: \{{dann[:description]}}.as(::String),
+              placeholder: ("<args>... " + \{{dann[:delimiter]}}).as(::String?),
+              group:       nil.as(::String?),
+            }
+          \{% end %}
+        \{% end %}
         \{% for meth in ([@type] + @type.ancestors).map(&.methods).reduce([] of Def) { |acc, meths| acc + meths } %}
           \{% if gann = meth.annotation(::Shell::AutoComplete::OrderedFlagGroupDef) %}
             \{% for member_idx in 0...gann[:spellings].size %}
@@ -911,14 +1037,19 @@ module Shell::AutoComplete
         "--shell-completion"
       end
 
-      def self.completion_script(shell : Symbol) : String
+      # Generates the shell completion script. *executable*, when given, is the
+      # command the generated callback invokes for `__complete` — pass an
+      # absolute path so completion runs a specific binary regardless of `PATH`
+      # (useful for a dev build); the command name still registers the
+      # completion. Defaults to the command name.
+      def self.completion_script(shell : Symbol, executable : String? = nil) : String
         case shell
         when :bash
-          ::Shell::AutoComplete::Completion::Bash.render(self)
+          ::Shell::AutoComplete::Completion::Bash.render(self, executable)
         when :zsh
-          ::Shell::AutoComplete::Completion::Zsh.render(self)
+          ::Shell::AutoComplete::Completion::Zsh.render(self, executable)
         when :fish
-          ::Shell::AutoComplete::Completion::Fish.render(self)
+          ::Shell::AutoComplete::Completion::Fish.render(self, executable)
         else
           raise ArgumentError.new("unsupported shell: #{shell}")
         end
@@ -926,6 +1057,47 @@ module Shell::AutoComplete
 
       def self.completion_candidates(words : Array(String), cword : Int32, current : String, prev : String) : Array(String)
         result = [] of ::String
+
+        # Delimited-flag capture (issue: delimited_flag): if the cursor sits
+        # inside an un-terminated capture run — after a delimited spelling and
+        # before its delimiter — the tokens are an opaque run. For a plain
+        # delimited flag, offer nothing rather than this command's own flag
+        # names. For `external_command: true`, emit a COMMAND directive
+        # carrying the captured words so the shell completes them as a command
+        # line (command names for the first word, the command's own completion
+        # after).
+        \{% begin %}
+          \{% delimited_ivars_c = @type.instance_vars.select { |iv| iv.annotation(::Shell::AutoComplete::DelimitedFlagDef) } %}
+          \{% unless delimited_ivars_c.empty? %}
+            delimited_active_term = nil.as(::String?)
+            delimited_capture_external = false
+            delimited_capture_start = 0
+            delimited_scan = 1
+            while delimited_scan < cword && delimited_scan < words.size
+              delimited_word = words[delimited_scan]
+              if term = delimited_active_term
+                delimited_active_term = nil if delimited_word == term
+              else
+                \{% for iv in delimited_ivars_c %}
+                  \{% dann = iv.annotation(::Shell::AutoComplete::DelimitedFlagDef) %}
+                  if \{% for sp, sp_i in dann[:names] %}\{% if sp_i > 0 %} || \{% end %}delimited_word == \{{sp}}\{% end %}
+                    delimited_active_term = \{{dann[:delimiter]}}
+                    delimited_capture_external = \{{ dann[:external_command] ? true : false }}
+                    delimited_capture_start = delimited_scan + 1
+                  end
+                \{% end %}
+              end
+              delimited_scan += 1
+            end
+            unless delimited_active_term.nil?
+              if delimited_capture_external
+                delimited_typed = delimited_capture_start <= cword ? words[delimited_capture_start...cword] : [] of ::String
+                return [::Shell::AutoComplete::Completion::Directive.command(delimited_typed)]
+              end
+              return result
+            end
+          \{% end %}
+        \{% end %}
 
         # Check if prev word is a flag that takes a value — emit value candidates.
         # complete_with: and per-flag __arg_complete_<name> dispatch. This runs
@@ -1214,6 +1386,14 @@ module Shell::AutoComplete
                 sub_slot_taken = true
                 break
               end
+              \{% if @type.has_constant?("EXTERNAL_SUBCOMMANDS") %}
+                # A resolved external subcommand word also consumes the slot;
+                # its own arguments are the external command's to complete.
+                if !sub_token.starts_with?("-") && external_subcommand_path(sub_token)
+                  sub_slot_taken = true
+                  break
+                end
+              \{% end %}
             end
             unless sub_slot_taken
               SUBCOMMANDS.each do |(sub_name, sub_klass)|
@@ -1222,6 +1402,11 @@ module Shell::AutoComplete
                   result << sub_alias if sub_alias.starts_with?(current)
                 end
               end
+              \{% if @type.has_constant?("EXTERNAL_SUBCOMMANDS") %}
+                external_subcommand_names(current).each do |ext_name|
+                  result << ext_name unless result.includes?(ext_name)
+                end
+              \{% end %}
               return result unless result.empty?
             end
           end
@@ -1319,6 +1504,15 @@ module Shell::AutoComplete
 
         # Flag-name completion when current starts with "-" or is empty.
         if current.starts_with?("-") || current.empty?
+          \{% for ivar in @type.instance_vars %}
+            \{% if dann = ivar.annotation(::Shell::AutoComplete::DelimitedFlagDef) %}
+              \{% for sp in dann[:names] %}
+                if \{{sp}}.starts_with?(current)
+                  result << \{{sp}}
+                end
+              \{% end %}
+            \{% end %}
+          \{% end %}
           \{% for meth in ([@type] + @type.ancestors).map(&.methods).reduce([] of Def) { |acc, meths| acc + meths } %}
             \{% if gann = meth.annotation(::Shell::AutoComplete::OrderedFlagGroupDef) %}
               \{% for spelling in gann[:spellings] %}
@@ -1416,8 +1610,14 @@ module Shell::AutoComplete
           # the values they consume) to find the subcommand word, so shared
           # flags may appear before or after it, and a routing command
           # invoked with only its own flags parses them instead of raising
-          # "unknown subcommand". Tokens after -- never route.
-          unless SUBCOMMANDS.empty?
+          # "unknown subcommand". Tokens after -- never route. `external_
+          # subcommands` enables the walk even with no declared subcommands,
+          # so a pure PATH-dispatch tool still routes.
+          routing_active = !SUBCOMMANDS.empty?
+          \{% if @type.has_constant?("EXTERNAL_SUBCOMMANDS") %}
+            routing_active = true
+          \{% end %}
+          if routing_active
             if argv.empty?
               stdout.puts help(parent_prefix)
               return
@@ -1613,11 +1813,33 @@ module Shell::AutoComplete
               switch_flag_tokens << \{{ sp }}
             \{% end %}
             \{% end %}
+            # A delimited flag (issue: delimited_flag) on this routing command
+            # consumes a run of tokens up to its delimiter, so the walk skips
+            # that whole run rather than reading the captured tokens (or the
+            # delimiter) as a subcommand word. The capture stays in argv and is
+            # handled by the chosen command's own parse (via parent: for an
+            # inherited delimited flag).
+            delimited_route = {} of ::String => ::String
+            \{% for ivar in @type.instance_vars %}
+              \{% if dann = ivar.annotation(::Shell::AutoComplete::DelimitedFlagDef) %}
+                \{% for sp in dann[:names] %}
+                  delimited_route[\{{sp}}] = \{{dann[:delimiter]}}
+                \{% end %}
+              \{% end %}
+            \{% end %}
             route_index = 0
             subcommand_word = nil
             subcommand_index = -1
             while route_index < argv.size
               route_token = argv[route_index]
+              if route_delim_term = delimited_route[route_token]?
+                route_index += 1
+                while route_index < argv.size && argv[route_index] != route_delim_term
+                  route_index += 1
+                end
+                route_index += 1 if route_index < argv.size
+                next
+              end
               break if route_token == "--"
               if route_token.starts_with?("-") && route_token.size > 1
                 route_name = route_token.partition('=')[0]
@@ -1641,6 +1863,16 @@ module Shell::AutoComplete
                 routed_argv.delete_at(subcommand_index)
                 return match.dispatch(routed_argv, stdout: stdout, stderr: stderr, rescue_errors: false, parent_prefix: qualified)
               end
+              \{% if @type.has_constant?("EXTERNAL_SUBCOMMANDS") %}
+                # git-style external subcommand: no declared match, so look for
+                # `<command_name>-<word>` on the search path and hand off
+                # blindly. Everything after the subcommand word is passed
+                # through. `exec` replaces this process, so exit status and
+                # signals propagate naturally.
+                if external_path = external_subcommand_path(subcommand_word)
+                  ::Process.exec(external_path, argv[(subcommand_index + 1)..])
+                end
+              \{% end %}
               raise ::Shell::AutoComplete::ParseError.new("unknown subcommand: #{subcommand_word}")
             end
             # No subcommand word: a routing command invoked with only its own
