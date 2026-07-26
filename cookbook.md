@@ -444,6 +444,22 @@ all route to `Move`; every alias is offered in completion and listed beside the 
 help (`move, mv, rename`). A canonical name always wins over an alias, so an alias can't shadow
 another subcommand's real name.
 
+### Extend a tool with external `tool-foo` executables, like git
+
+```crystal
+Shell::AutoComplete.command Tool, name: "tool", description: "..." do
+  external_subcommands
+  subcommand Build
+end
+```
+
+`external_subcommands` makes an unrecognized subcommand word fall back to `PATH`: `tool deploy a b`
+looks for `tool-deploy` and, if found, replaces the process with it (`exec`), passing `a b` (and any
+flags) straight through. Declared subcommands still win, so `tool build` runs the built-in `Build`.
+A word with a path separator is never looked up, and a miss gives the normal `unknown subcommand`
+error. Use it with declared subcommands or alone for a pure dispatcher; it may only go on a root
+command (a `parent:`-derived one is a compile error).
+
 ### Let a global flag appear before or after the subcommand
 
 ```crystal

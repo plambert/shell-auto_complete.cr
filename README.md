@@ -225,6 +225,13 @@ Each alias routes to the command exactly as its canonical name does, is offered 
 is listed beside the name in the parent's help (`move, mv, rename`). A canonical name match on any
 subcommand wins over an alias, so an alias can never shadow another command's real name.
 
+`external_subcommands` (on a root command's block) adds git-style external dispatch: a subcommand
+word matching no declared subcommand is looked up on `PATH` as `<command_name>-<word>`, and if found
+the process is replaced (`exec`) with it, passing every argument after the word. Declared
+subcommands always win; a word containing a path separator is never looked up; and when nothing is
+found the usual `unknown subcommand` error is raised. It works with declared subcommands or on its
+own (a pure PATH-dispatch tool). Declaring it on a `parent:`-derived command is a compile error.
+
 ### Inheriting flags
 
 `parent: OtherCommand` on the `command` macro makes a command inherit every flag the parent declares

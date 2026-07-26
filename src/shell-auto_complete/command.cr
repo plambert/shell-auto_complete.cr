@@ -1514,8 +1514,14 @@ module Shell::AutoComplete
           # the values they consume) to find the subcommand word, so shared
           # flags may appear before or after it, and a routing command
           # invoked with only its own flags parses them instead of raising
-          # "unknown subcommand". Tokens after -- never route.
-          unless SUBCOMMANDS.empty?
+          # "unknown subcommand". Tokens after -- never route. `external_
+          # subcommands` enables the walk even with no declared subcommands,
+          # so a pure PATH-dispatch tool still routes.
+          routing_active = !SUBCOMMANDS.empty?
+          \{% if @type.has_constant?("EXTERNAL_SUBCOMMANDS") %}
+            routing_active = true
+          \{% end %}
+          if routing_active
             if argv.empty?
               stdout.puts help(parent_prefix)
               return
@@ -1761,6 +1767,19 @@ module Shell::AutoComplete
                 routed_argv.delete_at(subcommand_index)
                 return match.dispatch(routed_argv, stdout: stdout, stderr: stderr, rescue_errors: false, parent_prefix: qualified)
               end
+              \{% if @type.has_constant?("EXTERNAL_SUBCOMMANDS") %}
+                # git-style external subcommand: no declared match, so look for
+                # `<command_name>-<word>` on PATH and hand off blindly. Only a
+                # bare word (no path separator) is looked up; everything after
+                # the subcommand word is passed through. `exec` replaces this
+                # process, so exit status and signals propagate naturally.
+                if !subcommand_word.includes?('/') && !subcommand_word.empty?
+                  external_command_name = command_name + "-" + subcommand_word
+                  if external_path = ::Process.find_executable(external_command_name)
+                    ::Process.exec(external_path, argv[(subcommand_index + 1)..])
+                  end
+                end
+              \{% end %}
               raise ::Shell::AutoComplete::ParseError.new("unknown subcommand: #{subcommand_word}")
             end
             # No subcommand word: a routing command invoked with only its own
