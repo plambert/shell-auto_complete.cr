@@ -300,6 +300,11 @@ configurable with `delimiter:`. Only the space-separated form is captured — `-
 delimited invocation. Composes with subcommands through `parent:` inheritance: the routing walk
 skips the capture to find the subcommand word.
 
+`external_command: true` marks the captured value as a command line for completion: inside the
+capture the shell completes the first word as a command name and the rest with that command's own
+completion (falling back to file completion) — via `_command_offset` (bash), `_normal` (zsh), and
+`complete -C` (fish). It changes completion only, not parsing.
+
 ### before_run hooks
 
 ```crystal

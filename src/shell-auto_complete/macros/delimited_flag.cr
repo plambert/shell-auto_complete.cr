@@ -26,6 +26,11 @@ module Shell::AutoComplete
     #
     # The delimiter is configurable with `delimiter:`. Only the space-separated
     # capture form is supported; `--command=x` is not a delimited invocation.
+    #
+    # `external_command: true` marks the captured value as an external command
+    # for completion: inside the capture, the shell completes the first word as
+    # a command name and the rest with that command's own completion (falling
+    # back to file completion). It does not change parsing.
     macro delimited_flag(decl, *args, **opts)
       {%
         raise "delimited_flag #{decl} expects `name : Type` (got #{decl})" unless decl.is_a?(TypeDeclaration)
@@ -43,13 +48,16 @@ module Shell::AutoComplete
         raise "delimited_flag #{decl.var} needs at least one spelling, e.g. \"--command\"" if flag_strings.empty?
 
         opts.keys.each do |opt_key|
-          unless ["delimiter", "description"].includes?(opt_key.stringify)
-            raise "delimited_flag #{decl.var}: unknown option #{opt_key} (expected delimiter:, description:)"
+          unless ["delimiter", "description", "external_command"].includes?(opt_key.stringify)
+            raise "delimited_flag #{decl.var}: unknown option #{opt_key} (expected delimiter:, description:, external_command:)"
           end
         end
 
         delimiter = opts[:delimiter] || "--"
         raise "delimited_flag #{decl.var}: delimiter: must be a string literal" unless delimiter.is_a?(StringLiteral)
+
+        external_command = opts[:external_command] == nil ? false : opts[:external_command]
+        raise "delimited_flag #{decl.var}: external_command: must be true or false" unless external_command.is_a?(BoolLiteral)
 
         description = opts[:description] || (descriptions.empty? ? "" : descriptions[0])
 
@@ -86,6 +94,7 @@ module Shell::AutoComplete
         names: {{ flag_strings }},
         delimiter: {{ delimiter }},
         description: {{ description }},
+        external_command: {{ external_command }},
       )]
       {% if nilable %}
         property {{ decl.var }} : {{ inner_type_q }}? = nil

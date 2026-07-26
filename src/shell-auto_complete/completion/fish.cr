@@ -18,6 +18,15 @@ module Shell::AutoComplete::Completion
         io << "      case " << Directive::DIRS << '\n'
         io << "        __fish_complete_directories $current\n"
         io << "        return\n"
+        # COMMAND directive: the line is the sentinel plus tab-separated words
+        # of the embedded command. Rebuild that command line and let fish's own
+        # `complete -C` finish it — command names for the first word, the
+        # command's own completion after, falling back to file completion.
+        io << "      case '" << Directive::COMMAND << "*'\n"
+        io << "        set -l parts (string split \\t -- $out[1])\n"
+        io << "        set -e parts[1]\n"
+        io << "        complete -C (string join ' ' -- $parts $current)\n"
+        io << "        return\n"
         io << "    end\n"
         io << "  end\n"
         io << "  for line in $out\n"

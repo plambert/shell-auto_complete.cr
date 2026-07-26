@@ -1055,12 +1055,18 @@ module Shell::AutoComplete
 
         # Delimited-flag capture (issue: delimited_flag): if the cursor sits
         # inside an un-terminated capture run — after a delimited spelling and
-        # before its delimiter — the tokens are an opaque external command, so
-        # offer nothing rather than this command's own flag names.
+        # before its delimiter — the tokens are an opaque run. For a plain
+        # delimited flag, offer nothing rather than this command's own flag
+        # names. For `external_command: true`, emit a COMMAND directive
+        # carrying the captured words so the shell completes them as a command
+        # line (command names for the first word, the command's own completion
+        # after).
         \{% begin %}
           \{% delimited_ivars_c = @type.instance_vars.select { |iv| iv.annotation(::Shell::AutoComplete::DelimitedFlagDef) } %}
           \{% unless delimited_ivars_c.empty? %}
             delimited_active_term = nil.as(::String?)
+            delimited_capture_external = false
+            delimited_capture_start = 0
             delimited_scan = 1
             while delimited_scan < cword && delimited_scan < words.size
               delimited_word = words[delimited_scan]
@@ -1071,12 +1077,20 @@ module Shell::AutoComplete
                   \{% dann = iv.annotation(::Shell::AutoComplete::DelimitedFlagDef) %}
                   if \{% for sp, sp_i in dann[:names] %}\{% if sp_i > 0 %} || \{% end %}delimited_word == \{{sp}}\{% end %}
                     delimited_active_term = \{{dann[:delimiter]}}
+                    delimited_capture_external = \{{ dann[:external_command] ? true : false }}
+                    delimited_capture_start = delimited_scan + 1
                   end
                 \{% end %}
               end
               delimited_scan += 1
             end
-            return result unless delimited_active_term.nil?
+            unless delimited_active_term.nil?
+              if delimited_capture_external
+                delimited_typed = delimited_capture_start <= cword ? words[delimited_capture_start...cword] : [] of ::String
+                return [::Shell::AutoComplete::Completion::Directive.command(delimited_typed)]
+              end
+              return result
+            end
           \{% end %}
         \{% end %}
 

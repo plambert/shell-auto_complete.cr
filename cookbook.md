@@ -365,6 +365,14 @@ nilable type). Change the delimiter with `delimiter: "END"`. To pair it with sub
 on a base command and inherit with `parent:` — the router skips the captured run to find the
 subcommand word.
 
+Add `external_command: true` to complete the captured run as a command line: the first word
+completes as a command name, and later words use that command's own completion (falling back to
+files). This only affects completion — parsing is unchanged.
+
+```crystal
+delimited_flag command : Array(String), "--command", "Command to run", external_command: true
+```
+
 ## Enums
 
 ### Accept one of an enum's values

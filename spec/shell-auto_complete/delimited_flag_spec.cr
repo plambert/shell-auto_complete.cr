@@ -18,6 +18,16 @@ Shell::AutoComplete.command DfNilable, name: "dfn", description: "nilable + cust
   end
 end
 
+Shell::AutoComplete.command DfExternal, name: "run", description: "external command" do
+  delimited_flag command : Array(String), "--command", "-c", "Command", external_command: true
+  delimited_flag plain : Array(String), "--plain", "Plain capture"
+
+  def run
+  end
+end
+
+private DF_COMMAND = Shell::AutoComplete::Completion::Directive::COMMAND
+
 # Routing: a delimited flag on a base, inherited by a routed subcommand.
 Shell::AutoComplete.command DfBase, name: "dfbase", description: "base" do
   delimited_flag pre : Array(String), "--pre", "preamble"
@@ -126,6 +136,43 @@ describe "delimited_flag" do
       # here by construction — DfTool compiles with distinct spellings, and a
       # colliding delimited_flag/flag pair fails to compile (covered manually).
       DfTool.parse(["--json"]).command.should eq([] of String)
+    end
+  end
+
+  describe "external_command completion" do
+    it "emits a bare COMMAND directive for the first captured word" do
+      df_complete(DfExternal, ["__complete", "2", "run", "--command", ""])
+        .should eq([DF_COMMAND])
+    end
+
+    it "carries the already-typed words as tab-separated payload" do
+      df_complete(DfExternal, ["__complete", "3", "run", "--command", "echo", ""])
+        .should eq(["#{DF_COMMAND}\techo"])
+    end
+
+    it "carries a multi-word payload in order" do
+      df_complete(DfExternal, ["__complete", "4", "run", "--command", "git", "commit", ""])
+        .should eq(["#{DF_COMMAND}\tgit\tcommit"])
+    end
+
+    it "works through the short spelling" do
+      df_complete(DfExternal, ["__complete", "3", "run", "-c", "git", ""])
+        .should eq(["#{DF_COMMAND}\tgit"])
+    end
+
+    it "does not treat a plain delimited flag as an external command" do
+      df_complete(DfExternal, ["__complete", "3", "run", "--plain", "echo", ""]).should be_empty
+    end
+
+    it "resumes flag completion after the delimiter" do
+      df_complete(DfExternal, ["__complete", "4", "run", "--command", "echo", "--", "--"])
+        .should_not be_empty
+    end
+
+    it "is carried through each generated shell script" do
+      DfExternal.completion_script(:bash).should contain(DF_COMMAND)
+      DfExternal.completion_script(:zsh).should contain(DF_COMMAND)
+      DfExternal.completion_script(:fish).should contain(DF_COMMAND)
     end
   end
 

@@ -14,6 +14,19 @@ module Shell::AutoComplete::Completion
         io << "    case \"$candidates[1]\" in\n"
         io << "      " << Directive::FILES << ") _files; return ;;\n"
         io << "      " << Directive::DIRS << ") _files -/; return ;;\n"
+        # COMMAND directive: the candidate is the sentinel plus tab-separated
+        # words of the embedded command. Rebuild `words`/`CURRENT` as that
+        # command line and hand off to `_normal`, which dispatches to the
+        # embedded command's own completion (or file completion by default).
+        io << "      " << Directive::COMMAND << "*)\n"
+        io << "        local tab=$'\\t'\n"
+        io << "        local -a sub\n"
+        io << "        sub=( \"${(@ps:$tab:)candidates[1]}\" )\n"
+        io << "        shift sub\n"
+        io << "        words=( \"${sub[@]}\" \"$PREFIX\" )\n"
+        io << "        CURRENT=$#words\n"
+        io << "        _normal\n"
+        io << "        return ;;\n"
         io << "    esac\n"
         io << "  fi\n"
         io << "  compadd -- $candidates\n"
