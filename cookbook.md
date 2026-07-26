@@ -457,8 +457,19 @@ end
 looks for `tool-deploy` and, if found, replaces the process with it (`exec`), passing `a b` (and any
 flags) straight through. Declared subcommands still win, so `tool build` runs the built-in `Build`.
 A word with a path separator is never looked up, and a miss gives the normal `unknown subcommand`
-error. Use it with declared subcommands or alone for a pure dispatcher; it may only go on a root
-command (a `parent:`-derived one is a compile error).
+error. Discovered externals are also offered in completion. Use it with declared subcommands or
+alone for a pure dispatcher; it may only go on a root command (a `parent:`-derived one is a compile
+error).
+
+To search fixed directories instead of `PATH`, pass `search_path:` — a colon-separated list where
+relative entries resolve against the binary's own directory:
+
+```crystal
+external_subcommands search_path: "commands:../lib/commands:/etc/tool/commands"
+```
+
+For a binary at `/opt/tool/bin/tool` that searches `/opt/tool/bin/commands`,
+`/opt/tool/lib/commands`, and `/etc/tool/commands`, in order, ignoring `PATH` entirely.
 
 ### Let a global flag appear before or after the subcommand
 

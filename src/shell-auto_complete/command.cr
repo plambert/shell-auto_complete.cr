@@ -141,6 +141,70 @@ module Shell::AutoComplete
         nil
       end
 
+      # Directories searched for external subcommands (`external_subcommands`).
+      # With `search_path:` set, the configured entries are resolved once —
+      # relative ones against the running binary's directory — so the lookup is
+      # independent of `PATH`. Otherwise the `PATH` directories are used, git
+      # style. Returns an empty list when the feature is off.
+      def self.external_subcommand_dirs : Array(String)
+        \{% if @type.has_constant?("EXTERNAL_SUBCOMMANDS_SEARCH_PATH") %}
+          base = File.dirname(::Process.executable_path || PROGRAM_NAME)
+          EXTERNAL_SUBCOMMANDS_SEARCH_PATH.split(':').reject(&.empty?).map do |entry|
+            File.expand_path(entry, base)
+          end
+        \{% elsif @type.has_constant?("EXTERNAL_SUBCOMMANDS") %}
+          (ENV["PATH"]? || "").split(::Process::PATH_DELIMITER).reject(&.empty?)
+        \{% else %}
+          [] of ::String
+        \{% end %}
+      end
+
+      # Resolves an external subcommand word to an executable path, or nil. A
+      # word with a path separator is never looked up. With `search_path:` the
+      # configured dirs are scanned in order; otherwise `PATH` is used.
+      def self.external_subcommand_path(word : String) : String?
+        return nil if word.empty? || word.includes?('/')
+        target = command_name + "-" + word
+        \{% if @type.has_constant?("EXTERNAL_SUBCOMMANDS_SEARCH_PATH") %}
+          external_subcommand_dirs.each do |dir|
+            candidate = File.join(dir, target)
+            return candidate if File.file?(candidate) && File::Info.executable?(candidate)
+          end
+          nil
+        \{% else %}
+          ::Process.find_executable(target)
+        \{% end %}
+      end
+
+      # External subcommand names (the `<word>` in `<command_name>-<word>`)
+      # discovered on the search path, prefix-filtered, deduplicated, in
+      # search-path order. Used to offer external subcommands in completion.
+      def self.external_subcommand_names(prefix : String) : Array(String)
+        names = [] of ::String
+        \{% if @type.has_constant?("EXTERNAL_SUBCOMMANDS") %}
+          seen = ::Set(::String).new
+          exec_prefix = command_name + "-"
+          external_subcommand_dirs.each do |dir|
+            next unless Dir.exists?(dir)
+            begin
+              Dir.each_child(dir) do |entry|
+                next unless entry.starts_with?(exec_prefix)
+                name = entry[exec_prefix.size..]
+                next if name.empty? || name.includes?('/') || seen.includes?(name)
+                next unless name.starts_with?(prefix)
+                full = File.join(dir, entry)
+                next unless File.file?(full) && File::Info.executable?(full)
+                seen << name
+                names << name
+              end
+            rescue ::File::Error
+              # Unreadable dir on the search path: skip it.
+            end
+          end
+        \{% end %}
+        names
+      end
+
       # Invokes every `before_run` hook in the class hierarchy, parent-first,
       # on this instance. Called by `dispatch` between parse and `run`.
       def run_before_hooks : Nil
@@ -1303,6 +1367,14 @@ module Shell::AutoComplete
                 sub_slot_taken = true
                 break
               end
+              \{% if @type.has_constant?("EXTERNAL_SUBCOMMANDS") %}
+                # A resolved external subcommand word also consumes the slot;
+                # its own arguments are the external command's to complete.
+                if !sub_token.starts_with?("-") && external_subcommand_path(sub_token)
+                  sub_slot_taken = true
+                  break
+                end
+              \{% end %}
             end
             unless sub_slot_taken
               SUBCOMMANDS.each do |(sub_name, sub_klass)|
@@ -1311,6 +1383,11 @@ module Shell::AutoComplete
                   result << sub_alias if sub_alias.starts_with?(current)
                 end
               end
+              \{% if @type.has_constant?("EXTERNAL_SUBCOMMANDS") %}
+                external_subcommand_names(current).each do |ext_name|
+                  result << ext_name unless result.includes?(ext_name)
+                end
+              \{% end %}
               return result unless result.empty?
             end
           end
@@ -1769,15 +1846,12 @@ module Shell::AutoComplete
               end
               \{% if @type.has_constant?("EXTERNAL_SUBCOMMANDS") %}
                 # git-style external subcommand: no declared match, so look for
-                # `<command_name>-<word>` on PATH and hand off blindly. Only a
-                # bare word (no path separator) is looked up; everything after
-                # the subcommand word is passed through. `exec` replaces this
-                # process, so exit status and signals propagate naturally.
-                if !subcommand_word.includes?('/') && !subcommand_word.empty?
-                  external_command_name = command_name + "-" + subcommand_word
-                  if external_path = ::Process.find_executable(external_command_name)
-                    ::Process.exec(external_path, argv[(subcommand_index + 1)..])
-                  end
+                # `<command_name>-<word>` on the search path and hand off
+                # blindly. Everything after the subcommand word is passed
+                # through. `exec` replaces this process, so exit status and
+                # signals propagate naturally.
+                if external_path = external_subcommand_path(subcommand_word)
+                  ::Process.exec(external_path, argv[(subcommand_index + 1)..])
                 end
               \{% end %}
               raise ::Shell::AutoComplete::ParseError.new("unknown subcommand: #{subcommand_word}")

@@ -230,7 +230,15 @@ word matching no declared subcommand is looked up on `PATH` as `<command_name>-<
 the process is replaced (`exec`) with it, passing every argument after the word. Declared
 subcommands always win; a word containing a path separator is never looked up; and when nothing is
 found the usual `unknown subcommand` error is raised. It works with declared subcommands or on its
-own (a pure PATH-dispatch tool). Declaring it on a `parent:`-derived command is a compile error.
+own (a pure PATH-dispatch tool), and discovered external subcommands are offered in completion
+alongside declared ones. Declaring it on a `parent:`-derived command is a compile error.
+
+`search_path:` restricts the lookup to a fixed, colon-separated directory list instead of `PATH`. A
+relative entry resolves against the directory holding the running binary, so
+`external_subcommands search_path: "commands:../lib/commands:/etc/tool/commands"` for a binary at
+`/opt/tool/bin/tool` searches `/opt/tool/bin/commands`, `/opt/tool/lib/commands`, and
+`/etc/tool/commands`, in order, regardless of the caller's `PATH`. Both dispatch and completion use
+it.
 
 ### Inheriting flags
 
