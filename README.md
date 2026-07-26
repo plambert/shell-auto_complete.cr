@@ -262,6 +262,29 @@ For the rsync/tar shape where the interleaving between flags is the semantics. T
 per occurrence in command-line order; raising `ArgumentError` becomes a parse error. Value-taking
 members only.
 
+### Delimited flags
+
+```crystal
+delimited_flag command : Array(String), "--command", "-c", "Command to run"
+```
+
+Captures a run of raw argv tokens into a collection, ending at a delimiter (default `--`, which is
+discarded). Every token in the run is appended verbatim, so flag-looking tokens are taken literally
+— the `env`/`xargs`/`time` shape where a whole sub-command is embedded:
+
+```text
+tool --command echo hello -- --json path
+#   @command => ["echo", "hello"]      (built with .new then <<(String) per token)
+#   @json    => true                   (parsing resumes after the delimiter)
+```
+
+The declared type only has to answer `.new` and `<<(String)` (`Array(String)`, `Set(String)`, or a
+custom type). If the delimiter never appears, capture runs to the end of argv; when the flag is
+absent the property is an empty `.new` (or `nil`, if the type is nilable). The delimiter is
+configurable with `delimiter:`. Only the space-separated form is captured — `--command=x` is not a
+delimited invocation. Composes with subcommands through `parent:` inheritance: the routing walk
+skips the capture to find the subcommand word.
+
 ### before_run hooks
 
 ```crystal

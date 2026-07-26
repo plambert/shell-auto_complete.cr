@@ -342,6 +342,29 @@ matched spelling (dashes stripped) and the value. Raising `ArgumentError` from t
 clean parse error. Members render in help and complete like ordinary flags. (Value-taking members
 only; switch members are not yet supported.)
 
+### Capture a whole sub-command, like `time` or `env`
+
+```crystal
+delimited_flag command : Array(String), "--command", "-c", "Command to run"
+```
+
+`delimited_flag` grabs every token after the flag, verbatim, until a delimiter (default `--`, which
+is discarded), then parsing resumes:
+
+```text
+tool --command echo hello -- --json path
+#   @command => ["echo", "hello"]
+#   @json    => true                 (a normal flag again, after the delimiter)
+```
+
+Flag-looking tokens inside the run (`-n`, `--color`) are taken literally, which is the point — you
+are capturing someone else's command line. The declared type just has to answer `.new` and
+`<<(String)`, so `Array(String)` or `Set(String)` both work. If the delimiter never appears, capture
+runs to the end of the line; if the flag is absent, the value is an empty collection (or `nil` for a
+nilable type). Change the delimiter with `delimiter: "END"`. To pair it with subcommands, declare it
+on a base command and inherit with `parent:` — the router skips the captured run to find the
+subcommand word.
+
 ## Enums
 
 ### Accept one of an enum's values

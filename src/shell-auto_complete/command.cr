@@ -230,6 +230,48 @@ module Shell::AutoComplete
       end
 
       def self.parse(argv : Array(String)) : self
+        # Delimited flags (issue: delimited_flag) capture a run of raw tokens
+        # ending at a delimiter, which is discarded; parsing then resumes on
+        # the remaining tokens. Extract those runs before the normal parser
+        # runs, so flag-looking tokens inside a captured run are taken
+        # literally and never reach the flag parser. The captured values are
+        # held here and assigned once the instance exists.
+        \{% begin %}
+          \{% delimited_ivars = @type.instance_vars.select { |iv| iv.annotation(::Shell::AutoComplete::DelimitedFlagDef) } %}
+          \{% unless delimited_ivars.empty? %}
+            \{% for iv in delimited_ivars %}
+              delimited_captured_\{{iv.name}} = nil
+            \{% end %}
+            delimited_cleaned = [] of ::String
+            delimited_i = 0
+            while delimited_i < argv.size
+              delimited_tok = argv[delimited_i]
+              delimited_matched = false
+              \{% for iv in delimited_ivars %}
+                \{% dann = iv.annotation(::Shell::AutoComplete::DelimitedFlagDef) %}
+                \{% dann_inner = iv.type.union? ? iv.type.union_types.reject { |t| t == Nil }[0] : iv.type %}
+                \{% dann_inner_q = (dann_inner.stringify.starts_with?("::") || dann_inner.stringify.starts_with?("(")) ? dann_inner : "::#{dann_inner}".id %}
+                if !delimited_matched && (\{% for sp, sp_i in dann[:names] %}\{% if sp_i > 0 %} || \{% end %}delimited_tok == \{{sp}}\{% end %})
+                  delimited_matched = true
+                  delimited_value_\{{iv.name}} = \{{dann_inner_q}}.new
+                  delimited_i += 1
+                  while delimited_i < argv.size && argv[delimited_i] != \{{dann[:delimiter]}}
+                    delimited_value_\{{iv.name}} << argv[delimited_i]
+                    delimited_i += 1
+                  end
+                  delimited_i += 1 if delimited_i < argv.size
+                  delimited_captured_\{{iv.name}} = delimited_value_\{{iv.name}}
+                end
+              \{% end %}
+              unless delimited_matched
+                delimited_cleaned << delimited_tok
+                delimited_i += 1
+              end
+            end
+            argv = delimited_cleaned
+          \{% end %}
+        \{% end %}
+
         specs = [] of ::Shell::AutoComplete::Parser::FlagSpec
         \{% for ivar in @type.instance_vars %}
           \{% if (fann = ivar.annotation(::Shell::AutoComplete::FlagDef)) && !@type.constant("OVERRIDDEN_FLAG_IVARS").includes?(ivar.name.stringify) %}
@@ -331,6 +373,13 @@ module Shell::AutoComplete
         result = ::Shell::AutoComplete::Parser.parse_argv(argv, specs, dash_positionals: \{{ @type.instance_vars.any? { |iv| iv.annotation(::Shell::AutoComplete::PositionalsDef) && iv.annotation(::Shell::AutoComplete::PositionalsDef)[:set_delta] } }})
         inst = new
         inst.parsed_occurrences = result[:occurrences]
+        \{% for iv in @type.instance_vars %}
+          \{% if iv.annotation(::Shell::AutoComplete::DelimitedFlagDef) %}
+            if delimited_final_\{{iv.name}} = delimited_captured_\{{iv.name}}
+              inst.\{{iv.name}} = delimited_final_\{{iv.name}}
+            end
+          \{% end %}
+        \{% end %}
         \{% if ([@type] + @type.ancestors).any? { |owner_type| owner_type.methods.any? { |m| m.annotation(::Shell::AutoComplete::OrderedFlagGroupDef) } } %}
           # Ordered flag groups: deliver each member occurrence, in
           # command-line order, to the group's handler. The block records into
@@ -843,6 +892,19 @@ module Shell::AutoComplete
             \{% end %}
           \{% end %}
         \{% end %}
+        \{% for ivar in @type.instance_vars %}
+          \{% if dann = ivar.annotation(::Shell::AutoComplete::DelimitedFlagDef) %}
+            \{% dnames = dann[:names] %}
+            flags << {
+              canonical:   \{{dnames[0]}}.as(::String),
+              aliases:     \{% if dnames.size <= 1 %}([] of ::String)\{% else %}\{{dnames[1..-1]}}.map(&.as(::String))\{% end %},
+              short:       nil.as(::String?),
+              description: \{{dann[:description]}}.as(::String),
+              placeholder: ("<args>... " + \{{dann[:delimiter]}}).as(::String?),
+              group:       nil.as(::String?),
+            }
+          \{% end %}
+        \{% end %}
         \{% for meth in ([@type] + @type.ancestors).map(&.methods).reduce([] of Def) { |acc, meths| acc + meths } %}
           \{% if gann = meth.annotation(::Shell::AutoComplete::OrderedFlagGroupDef) %}
             \{% for member_idx in 0...gann[:spellings].size %}
@@ -926,6 +988,33 @@ module Shell::AutoComplete
 
       def self.completion_candidates(words : Array(String), cword : Int32, current : String, prev : String) : Array(String)
         result = [] of ::String
+
+        # Delimited-flag capture (issue: delimited_flag): if the cursor sits
+        # inside an un-terminated capture run — after a delimited spelling and
+        # before its delimiter — the tokens are an opaque external command, so
+        # offer nothing rather than this command's own flag names.
+        \{% begin %}
+          \{% delimited_ivars_c = @type.instance_vars.select { |iv| iv.annotation(::Shell::AutoComplete::DelimitedFlagDef) } %}
+          \{% unless delimited_ivars_c.empty? %}
+            delimited_active_term = nil.as(::String?)
+            delimited_scan = 1
+            while delimited_scan < cword && delimited_scan < words.size
+              delimited_word = words[delimited_scan]
+              if term = delimited_active_term
+                delimited_active_term = nil if delimited_word == term
+              else
+                \{% for iv in delimited_ivars_c %}
+                  \{% dann = iv.annotation(::Shell::AutoComplete::DelimitedFlagDef) %}
+                  if \{% for sp, sp_i in dann[:names] %}\{% if sp_i > 0 %} || \{% end %}delimited_word == \{{sp}}\{% end %}
+                    delimited_active_term = \{{dann[:delimiter]}}
+                  end
+                \{% end %}
+              end
+              delimited_scan += 1
+            end
+            return result unless delimited_active_term.nil?
+          \{% end %}
+        \{% end %}
 
         # Check if prev word is a flag that takes a value — emit value candidates.
         # complete_with: and per-flag __arg_complete_<name> dispatch. This runs
@@ -1319,6 +1408,15 @@ module Shell::AutoComplete
 
         # Flag-name completion when current starts with "-" or is empty.
         if current.starts_with?("-") || current.empty?
+          \{% for ivar in @type.instance_vars %}
+            \{% if dann = ivar.annotation(::Shell::AutoComplete::DelimitedFlagDef) %}
+              \{% for sp in dann[:names] %}
+                if \{{sp}}.starts_with?(current)
+                  result << \{{sp}}
+                end
+              \{% end %}
+            \{% end %}
+          \{% end %}
           \{% for meth in ([@type] + @type.ancestors).map(&.methods).reduce([] of Def) { |acc, meths| acc + meths } %}
             \{% if gann = meth.annotation(::Shell::AutoComplete::OrderedFlagGroupDef) %}
               \{% for spelling in gann[:spellings] %}
@@ -1613,11 +1711,33 @@ module Shell::AutoComplete
               switch_flag_tokens << \{{ sp }}
             \{% end %}
             \{% end %}
+            # A delimited flag (issue: delimited_flag) on this routing command
+            # consumes a run of tokens up to its delimiter, so the walk skips
+            # that whole run rather than reading the captured tokens (or the
+            # delimiter) as a subcommand word. The capture stays in argv and is
+            # handled by the chosen command's own parse (via parent: for an
+            # inherited delimited flag).
+            delimited_route = {} of ::String => ::String
+            \{% for ivar in @type.instance_vars %}
+              \{% if dann = ivar.annotation(::Shell::AutoComplete::DelimitedFlagDef) %}
+                \{% for sp in dann[:names] %}
+                  delimited_route[\{{sp}}] = \{{dann[:delimiter]}}
+                \{% end %}
+              \{% end %}
+            \{% end %}
             route_index = 0
             subcommand_word = nil
             subcommand_index = -1
             while route_index < argv.size
               route_token = argv[route_index]
+              if route_delim_term = delimited_route[route_token]?
+                route_index += 1
+                while route_index < argv.size && argv[route_index] != route_delim_term
+                  route_index += 1
+                end
+                route_index += 1 if route_index < argv.size
+                next
+              end
               break if route_token == "--"
               if route_token.starts_with?("-") && route_token.size > 1
                 route_name = route_token.partition('=')[0]

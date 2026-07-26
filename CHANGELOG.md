@@ -2,6 +2,12 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Added
+
+- `delimited_flag`: captures a run of raw argv tokens into a collection, ending at a delimiter (default `--`, discarded), then resumes normal parsing on the rest of the line. Every token in the run is appended verbatim, so flag-looking tokens are taken literally — the `env`/`xargs`/`time` shape where a whole sub-command is embedded, e.g. `tool --command echo hello -- --json path` puts `["echo", "hello"]` in the flag and still parses `--json` as a flag. The declared type only has to answer `.new` and `<<(String)` (`Array(String)`, `Set(String)`, or a custom type); the value is built by `.new` then one `<<` per token. If the delimiter never appears, capture runs to the end of argv; an absent flag is an empty `.new` (or `nil` for a nilable type). The delimiter is configurable with `delimiter:`. Spellings register in the duplicate-name checker, the flag renders in help with a `<args>... --` placeholder, and completion offers the spelling as a flag name while suppressing candidates inside an un-terminated capture. Composes with subcommands through `parent:` inheritance — the routing walk skips the captured run to find the subcommand word.
+
 ## [2.4.1] - 2026-07-22
 
 ### Fixed
