@@ -116,8 +116,12 @@ module Shell::AutoComplete
         # Guard: shortcut_flags: is not valid for @[Flags] enums (which use
         # comma-separated values, not per-case boolean shortcuts). The option
         # is either `true` (every case) or a named-tuple config with `only:`,
-        # `except:` (mutually exclusive case filters) and `aliases:` (extra
-        # switches mapping to a specific case, e.g. {quiet: :warn}).
+        # `except:` (mutually exclusive case filters), `shorts:` (a short
+        # spelling for a generated case switch, e.g. {on: "-c"}) and
+        # `aliases:` (extra switches mapping to a specific case, e.g.
+        # {quiet: :warn}). An alias key that already starts with a dash is
+        # used verbatim as the spelling; an alias value may be the target
+        # case symbol or a {value:, short:, description:} tuple.
         sc_conf = opts[:shortcut_flags]
         if sc_conf
           if decl_type.is_a?(Union)
@@ -129,36 +133,76 @@ module Shell::AutoComplete
           if sc_resolved && sc_resolved.annotation(::Flags)
             raise "shortcut_flags: is not valid for @[Flags] enums (flag #{decl.var})"
           end
+          # Without a single resolved enum type there are no cases to walk, so
+          # the switches would silently not be generated and — worse — would
+          # not register in the duplicate-name checker. Fail at the site.
+          unless sc_resolved
+            raise "shortcut_flags: needs a single enum type to generate switches from; flag #{decl.var} declares #{decl_type}"
+          end
           unless sc_conf.is_a?(BoolLiteral) || sc_conf.is_a?(NamedTupleLiteral)
-            raise "shortcut_flags: must be true or a named-tuple config ({only:/except:/aliases:}) on flag #{decl.var}"
+            raise "shortcut_flags: must be true or a named-tuple config ({only:/except:/shorts:/aliases:}) on flag #{decl.var}"
           end
           if sc_conf.is_a?(NamedTupleLiteral)
             sc_conf.keys.each do |conf_key|
-              unless ["only", "except", "aliases"].includes?(conf_key.stringify)
-                raise "unknown shortcut_flags option #{conf_key} on flag #{decl.var} (expected only:, except:, aliases:)"
+              unless ["only", "except", "shorts", "aliases"].includes?(conf_key.stringify)
+                raise "unknown shortcut_flags option #{conf_key} on flag #{decl.var} (expected only:, except:, shorts:, aliases:)"
               end
             end
             if sc_conf[:only] && sc_conf[:except]
               raise "shortcut_flags only: and except: are mutually exclusive on flag #{decl.var}"
             end
-            if sc_resolved
-              sc_valid_cases = sc_resolved.constants.map(&.stringify.underscore)
-              (sc_conf[:only] || [] of SymbolLiteral).each do |case_sym|
-                unless sc_valid_cases.includes?(case_sym.id.stringify)
-                  raise "shortcut_flags only: names unknown enum case #{case_sym} on flag #{decl.var}"
+            sc_valid_cases = sc_resolved.constants.map(&.stringify.underscore)
+            (sc_conf[:only] || [] of SymbolLiteral).each do |case_sym|
+              unless sc_valid_cases.includes?(case_sym.id.stringify)
+                raise "shortcut_flags only: names unknown enum case #{case_sym} on flag #{decl.var}"
+              end
+            end
+            (sc_conf[:except] || [] of SymbolLiteral).each do |case_sym|
+              unless sc_valid_cases.includes?(case_sym.id.stringify)
+                raise "shortcut_flags except: names unknown enum case #{case_sym} on flag #{decl.var}"
+              end
+            end
+            if sc_shorts_check = sc_conf[:shorts]
+              unless sc_shorts_check.is_a?(NamedTupleLiteral)
+                raise "shortcut_flags shorts: must be a named tuple of case => spelling on flag #{decl.var}"
+              end
+              sc_shorts_check.keys.each do |short_key|
+                unless sc_valid_cases.includes?(short_key.id.stringify)
+                  raise "shortcut_flags shorts: names unknown enum case #{short_key} on flag #{decl.var}"
+                end
+                unless sc_shorts_check[short_key].is_a?(StringLiteral)
+                  raise "shortcut_flags shorts: #{short_key} must be a string spelling on flag #{decl.var}"
                 end
               end
-              (sc_conf[:except] || [] of SymbolLiteral).each do |case_sym|
-                unless sc_valid_cases.includes?(case_sym.id.stringify)
-                  raise "shortcut_flags except: names unknown enum case #{case_sym} on flag #{decl.var}"
-                end
-              end
-              if sc_aliases_check = sc_conf[:aliases]
-                sc_aliases_check.keys.each do |alias_key|
-                  target_sym = sc_aliases_check[alias_key]
-                  unless sc_valid_cases.includes?(target_sym.id.stringify)
-                    raise "shortcut_flags alias #{alias_key}: names unknown enum case #{target_sym} on flag #{decl.var}"
+            end
+            if sc_aliases_check = sc_conf[:aliases]
+              sc_aliases_check.keys.each do |alias_key|
+                alias_val = sc_aliases_check[alias_key]
+                if alias_val.is_a?(NamedTupleLiteral)
+                  alias_val.keys.each do |alias_opt|
+                    unless ["value", "short", "description"].includes?(alias_opt.stringify)
+                      raise "unknown shortcut_flags alias option #{alias_opt} on alias #{alias_key} of flag #{decl.var} (expected value:, short:, description:)"
+                    end
                   end
+                  unless alias_val[:value]
+                    raise "shortcut_flags alias #{alias_key} on flag #{decl.var} needs value: naming the enum case it forces"
+                  end
+                  if alias_short_check = alias_val[:short]
+                    unless alias_short_check.is_a?(StringLiteral)
+                      raise "shortcut_flags alias #{alias_key} short: must be a string spelling on flag #{decl.var}"
+                    end
+                  end
+                  if alias_desc_check = alias_val[:description]
+                    unless alias_desc_check.is_a?(StringLiteral)
+                      raise "shortcut_flags alias #{alias_key} description: must be a string literal on flag #{decl.var}"
+                    end
+                  end
+                  target_sym = alias_val[:value]
+                else
+                  target_sym = alias_val
+                end
+                unless sc_valid_cases.includes?(target_sym.id.stringify)
+                  raise "shortcut_flags alias #{alias_key}: names unknown enum case #{target_sym} on flag #{decl.var}"
                 end
               end
             end
@@ -235,9 +279,26 @@ module Shell::AutoComplete
             produced_names << "--no-" + long_form.id.stringify.gsub(/\A--/, "")
           end
         end
+        # ---- shortcut_flags normalization (issue #14, #55) ----
+        # Resolve the whole shortcut table once, here at the declaration site,
+        # into one entry per generated switch: every spelling it answers to,
+        # the enum-case value it forces, its help description, and whether it
+        # is listed in help. The table is stored in the FlagDef annotation as
+        # `shortcut_switches`, and every consumer — parse, help, completion,
+        # flag_given?, the routing walk and the routing union — reads it from
+        # there instead of re-deriving the spellings, so a switch's spelling
+        # is decided in exactly one place.
+        #
+        # Each entry is [spellings, forced value, description or nil, listed
+        # in help]. Case-derived switches stay out of help (the flag's own
+        # placeholder already lists the values) unless they carry a short
+        # spelling, which nothing else would reveal.
+        sc_specs = [] of ArrayLiteral
         if sc_conf && sc_resolved
           sc_only = sc_conf.is_a?(NamedTupleLiteral) ? sc_conf[:only] : nil
           sc_except = sc_conf.is_a?(NamedTupleLiteral) ? sc_conf[:except] : nil
+          sc_shorts = sc_conf.is_a?(NamedTupleLiteral) ? sc_conf[:shorts] : nil
+          sc_shorts_used = [] of StringLiteral
           # Two constants may kebab-case to the same switch spelling (KB and
           # Kb both give --kb). When they hold the same value they are alias
           # constants: the first-declared one owns the switch and later ones
@@ -258,17 +319,68 @@ module Shell::AutoComplete
               if first_idx == nil
                 sc_seen_kebabs << case_kebab
                 sc_seen_consts << case_const
-                produced_names << "--" + case_kebab
+                case_spellings = ["--" + case_kebab]
+                if sc_shorts
+                  sc_shorts.keys.each do |short_key|
+                    if short_key.id.stringify == case_under
+                      case_spellings << sc_shorts[short_key].id.stringify
+                      sc_shorts_used << case_under
+                    end
+                  end
+                end
+                sc_specs << [case_spellings, case_kebab, nil, case_spellings.size > 1]
               elsif sc_resolved.constant(case_const) != sc_resolved.constant(sc_seen_consts[first_idx])
                 raise "shortcut_flags on flag #{decl.var}: enum constants #{sc_seen_consts[first_idx]} and #{case_const} both produce the switch --#{case_kebab.id} but have different values; exclude one by adding shortcut_flags: {except: [:#{case_under.id}]} (the except: list takes underscored case names as symbols)"
               end
             end
           end
-          if sc_conf.is_a?(NamedTupleLiteral) && (sc_aliases_reg = sc_conf[:aliases])
-            sc_aliases_reg.keys.each do |alias_key|
-              produced_names << "--" + alias_key.stringify.underscore.tr("_", "-")
+          # A short for a case that only:/except: filtered out would generate
+          # a spelling with no switch behind it; the author meant one or the
+          # other, so say which.
+          if sc_shorts
+            sc_shorts.keys.each do |short_key|
+              unless sc_shorts_used.includes?(short_key.id.stringify)
+                raise "shortcut_flags shorts: #{short_key} on flag #{decl.var} names a case that only:/except: excludes, so there is no switch to give a short spelling to"
+              end
             end
           end
+          if sc_conf.is_a?(NamedTupleLiteral) && (sc_aliases_reg = sc_conf[:aliases])
+            sc_aliases_reg.keys.each do |alias_key|
+              alias_val = sc_aliases_reg[alias_key]
+              alias_raw = alias_key.id.stringify
+              if alias_val.is_a?(NamedTupleLiteral)
+                alias_target = alias_val[:value]
+                alias_short = alias_val[:short]
+                alias_desc = alias_val[:description]
+              else
+                alias_target = alias_val
+                alias_short = nil
+                alias_desc = nil
+              end
+              # A key already spelled as a flag is taken verbatim, so an alias
+              # can be a short (`{"-c": :on}`) or an explicitly spelled long
+              # form; a bare key keeps the kebab-cased `--name` derivation.
+              alias_spellings = [alias_raw.starts_with?("-") ? alias_raw : "--" + alias_raw.underscore.tr("_", "-")]
+              alias_spellings << alias_short.id.stringify if alias_short
+              sc_specs << [alias_spellings, alias_target.id.stringify.underscore.tr("_", "-"), alias_desc, true]
+            end
+          end
+        end
+        sc_entries = [] of StringLiteral
+        sc_specs.each do |sc_spec|
+          sc_quoted = [] of StringLiteral
+          sc_spec[0].each do |sc_spelling|
+            unless sc_spelling =~ /\A--?[^\s=]+\z/
+              raise "shortcut_flags spelling #{sc_spelling.id} on flag #{decl.var} must start with `-` or `--` and hold no space or `=`"
+            end
+            if !sc_spelling.starts_with?("--") && sc_spelling.size != 2
+              raise "shortcut_flags spelling #{sc_spelling.id} on flag #{decl.var} is a single-dash flag, so it must be exactly one character after the dash (the parser matches `-x`, never `-xy`)"
+            end
+            raise "#{sc_spelling.id} is a reserved flag name" if reserved.includes?(sc_spelling)
+            produced_names << sc_spelling
+            sc_quoted << sc_spelling.stringify
+          end
+          sc_entries << "{spellings: [" + sc_quoted.join(", ") + "], value: " + sc_spec[1].stringify + ", description: " + (sc_spec[2] ? sc_spec[2].stringify : "nil") + ", help: " + sc_spec[3].stringify + "}"
         end
 
         reg_names = @type.constant("FLAG_REGISTRY_NAMES")
@@ -411,7 +523,7 @@ module Shell::AutoComplete
         hidden: {% if opts[:hidden] == nil %}false{% else %}{{ opts[:hidden] }}{% end %},
         transform_with: {{ opts[:transform_with] }},
         validate_with: {{ opts[:validate_with] }},
-        shortcut_flags: {% if opts[:shortcut_flags] %}{{ opts[:shortcut_flags] }}{% else %}false{% end %},
+        shortcut_switches: {% if sc_entries.empty? %}[] of ::NamedTuple(spellings: ::Array(::String), value: ::String, description: ::String?, help: ::Bool){% else %}[{{ sc_entries.join(", ").id }}]{% end %},
         set_operations: {% if opts[:set_operations] %}true{% else %}false{% end %},
         hash_operations: {% if opts[:hash_operations] == nil %}true{% else %}{{ opts[:hash_operations] }}{% end %},
         delimiter: {% if opts.keys.map(&.stringify).includes?("delimiter") %}{{ opts[:delimiter] }}{% else %}","{% end %},

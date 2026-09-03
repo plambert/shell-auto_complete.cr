@@ -161,7 +161,7 @@ Flag options:
 | `delimiter:` | required on `Array`/`Set`: `","` splits each value, `nil` is one element per occurrence |
 | `set_operations: true` | `Set` flag treats `+x` add, `-x` remove, bare add |
 | `hash_operations: false` | `Hash` flag rejects the bare `-key` delete form |
-| `shortcut_flags:` | enum flag: `true`, or `{only:/except:/aliases:}` (see [Enums](cookbook.md#enums)) |
+| `shortcut_flags:` | enum flag: `true`, or `{only:/except:/shorts:/aliases:}` (see [Enums](cookbook.md#enums)) |
 | `placeholder:` | help metavar for the value |
 | `group:` | render under a named help heading |
 | `immediate:` | switch flag: run a handler and exit as soon as it appears |

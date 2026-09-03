@@ -1,6 +1,10 @@
 module Shell::AutoComplete
   module Help
-    alias FlagRow = NamedTuple(canonical: String, aliases: Array(String), short: String?, description: String, placeholder: String?, group: String?)
+    # `indent: true` renders the row one level in from the flags around it,
+    # for a row that belongs to the flag above it rather than standing on its
+    # own — an enum shortcut switch under the flag whose value it forces. The
+    # description column stays aligned with the unindented rows.
+    alias FlagRow = NamedTuple(canonical: String, aliases: Array(String), short: String?, description: String, placeholder: String?, group: String?, indent: Bool)
     alias SubcommandRow = NamedTuple(name: String, aliases: Array(String), description: String)
     alias PositionalRow = NamedTuple(name: String, description: String, variadic: Bool)
 
@@ -93,7 +97,11 @@ module Shell::AutoComplete
       if value_placeholder = flag_row[:placeholder]
         left += " " + value_placeholder
       end
-      str << "  " << left.ljust(30) << "  " << flag_row[:description] << "\n"
+      if flag_row[:indent]
+        str << "      " << left.ljust(26) << "  " << flag_row[:description] << "\n"
+      else
+        str << "  " << left.ljust(30) << "  " << flag_row[:description] << "\n"
+      end
     end
 
     private def self.default_usage(name : String, flags : Array(FlagRow), subcommands : Array(SubcommandRow) = [] of SubcommandRow, positionals : Array(PositionalRow) = [] of PositionalRow) : String

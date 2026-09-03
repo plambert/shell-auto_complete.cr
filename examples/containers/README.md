@@ -35,9 +35,10 @@ CONTAINER_HOST=localhost:2375 ./containers ps
 # Missing daemon is a clean parse error from the before_run hook
 ./containers ps                               # error: no daemon: pass --host or set CONTAINER_HOST
 
-# log-level enum with configured shortcut aliases
-./containers --host x --silent ps             # --silent => --log-level warn
-./containers --host x --verbose ps            # --verbose => --log-level info
+# log-level enum with configured shortcut aliases, each with a short spelling
+./containers --host x --silent ps             # --silent, -s => --log-level warn
+./containers --host x -v ps                   # --verbose, -v => --log-level info
+./containers --host x -w ps                   # -w is a short for the generated --warn
 ```
 
 ## Shell completion
@@ -55,6 +56,6 @@ CONTAINER_HOST=localhost:2375 ./containers ps
 - A `common_flag` catalog with `import_flags` pulling different subsets per command: `ps` imports `--format,--filter,--quiet,--all`; `images` imports `--format,--filter,--quiet,--digests`; `rm` imports none
 - The routing-union: `--format` accepted before `ps`/`images` but rejected at `rm`
 - `tool_version "1.4.0"` plus `enable_version_subcommand`
-- `shortcut_flags:` configuration on the `--log-level` enum (`except:` / `aliases:`)
+- `shortcut_flags:` on the `--log-level` enum: `except:` filtering, `shorts:` giving a generated case switch a short spelling, and `aliases:` in both the bare and `{value:, short:, description:}` forms
 - A `group: "Connection options"` heading and `help_sections:` reordering on `ps`
 - Explicit placeholders (`HOST[:PORT]`, `--signal SIGNAL`) alongside type-derived ones (`table|json|yaml`, `TEXT`)

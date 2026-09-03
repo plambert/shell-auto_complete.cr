@@ -415,6 +415,41 @@ exclusive), and `aliases:` adds named switches mapping to a specific case. Gener
 (`--warn`, `--quiet`,...) share the command's flag namespace, so an alias colliding with another
 flag — including an inherited or imported one — is a compile error; rename the alias if so.
 
+### Give an enum case a short option like `-c`
+
+```crystal
+flag color : ColorMode = ColorMode::Auto, "--color WHEN", "Colorize output",
+  shortcut_flags: {except: [:auto], shorts: {on: "-c", off: "-C"}}
+```
+
+`shorts:` attaches a short spelling to the switch generated for that case, so `-c` and `--on` are
+the same switch. Two other spellings are available when the generated `--<case>` name is not what
+you want:
+
+```crystal
+# The dashed key is used verbatim — exactly -c and -C, no long forms.
+shortcut_flags: {except: [:auto, :on, :off], aliases: {"-c": :on, "-C": :off}}
+
+# A long form and a short as one switch, with its own help text.
+shortcut_flags: {except: [:auto, :on, :off],
+                 aliases: {color_on: {value: :on, short: "-c", description: "Force color"}}}
+```
+
+All three feed the same flag's value stream, so `-c --color off` resolves last-wins to `Off`, and
+`flag_given?(:color)` is true for any of them. A short must be one character after the dash, which
+is what the parser matches. Switches carrying a short are listed in help, indented under the flag
+they set:
+
+```text
+Options:
+  --color WHEN                Colorize output
+      --on, -c                Same as --color on
+      --off, -C               Same as --color off
+```
+
+A switch with no short stays out of help — `--debug` on a `--log-level` flag is already implied by
+that flag's `debug|info|warn|error` placeholder.
+
 ## Subcommands and shared flags
 
 ### Add subcommands
