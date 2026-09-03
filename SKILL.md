@@ -112,7 +112,9 @@ shell-completion flag (default `--shell-completion`).
   `--foo` sets true, `--no-foo` sets false. Disable with `negatable: false`.
 - **Scalars** — `Int8`..`Int64`, `UInt8`..`UInt64`, `Float32/64`, `String`,
   `Char`, and stdlib types below. Use a nilable type (`Int32?`) for "unset", or
-  give a default.
+  give a default. `bare_number: true` adds the `head -20` shape as another
+  spelling of the same flag (`{sign: :plus}` for `+50`, `keep_sign:`,
+  `suffix:`, or a `pattern:`/`label:` pair for any other shape).
 - **Enums** — `flag level : LogLevel = LogLevel::Info, ...`. Pass a case name.
   Add `shortcut_flags: true` to also generate per-case switches
   (`--debug`, `--info`, …). Not allowed on `@[Flags]` enums.

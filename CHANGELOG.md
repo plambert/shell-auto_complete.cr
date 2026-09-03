@@ -6,6 +6,17 @@ All notable changes are documented here.
 
 ### Added
 
+- `bare_number:` accepts a token that is the flag and its value at once — the `head -20`, `tail -5`, `less +50` shape, which the parser previously rejected as `unknown flag: -20` (and, on a command with a `SetDelta` positional, silently swallowed as a positional). It is declared on the flag whose value it sets, so the two share one help row, one value stream and one transformer: `-20 --lines 5` resolves last-wins to 5 exactly as `--lines 20 --lines 5` does, and `flag_given?` counts either.
+
+  ```crystal
+  flag lines : Int32 = 10, "--lines N", "Lines to show", bare_number: true           # -20
+  flag start : Int32?,     "--start N", "Start line",     bare_number: {sign: :plus}  # +50
+  ```
+
+  `sign:` is `:minus` (the default), `:plus` or `:both`; `keep_sign: true` hands the sign to the flag with the digits, for a signed value; `suffix: true` lets a unit follow them (`-123M`); and `pattern:` replaces the derived shape with a regex whose first capture group is the value, paired with a `label:` naming how it reads in help. Only scalar, non-switch flags take it. Two flags on one command cannot claim the same sign, and a `+`-signed flag alongside a `SetDelta` positional — which reads `+name` tokens — is a compile error rather than a silent race for `+20`.
+
+  A bare number is matched by shape, after every declared spelling has been tried, so it never shadows a real flag and is never swallowed by a dash positional. It is skipped correctly by the subcommand routing walk and by positional-slot resolution during completion, listed in help as an indented row under its flag, and offered as no completion candidate — a number is not completable.
+
 - `shortcut_flags:` can spell a switch however it likes, so an enum-valued flag can offer a short option and not only a generated `--<case>` long form (#55). Three spellings, all of which register in the duplicate-name checker, count toward `flag_given?`, complete, and render in help:
   - an alias key that already starts with a dash is used verbatim — `aliases: {"-c": :on, "-C": :off}` gives exactly `-c` and `-C`;
   - an alias value may be a `{value:, short:, description:}` tuple instead of a bare case symbol — `aliases: {color_on: {value: :on, short: "-c", description: "Force color"}}` gives `--color-on` and `-c` as one switch on one help row;

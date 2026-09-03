@@ -162,6 +162,7 @@ Flag options:
 | `set_operations: true` | `Set` flag treats `+x` add, `-x` remove, bare add |
 | `hash_operations: false` | `Hash` flag rejects the bare `-key` delete form |
 | `shortcut_flags:` | enum flag: `true`, or `{only:/except:/shorts:/aliases:}` (see [Enums](cookbook.md#enums)) |
+| `bare_number:` | scalar flag: accept `-20`/`+50` as the flag and its value at once |
 | `placeholder:` | help metavar for the value |
 | `group:` | render under a named help heading |
 | `immediate:` | switch flag: run a handler and exit as soon as it appears |
@@ -365,7 +366,7 @@ list of values, either use an Enum, or set `choices: %w(a b c)` on the flag.
 Runnable programs under [examples/](examples/), each with its own README:
 
 * **[cat](examples/cat/)** — BSD/GNU `cat` clone: multiple `Bool` flags, a variadic `Array(Path)`
-  positional, `-` as a stdin marker.
+  positional, `-` as a stdin marker, and `bare_number:` for a `head -20` shorthand.
 * **[deploy](examples/deploy/)** — custom `transform_with:`, `validate_with:`, and `complete_with:`
   on one command, including all three on a single flag.
 * **[multitool](examples/multitool/)** — every bundled value type and synthetic type, across a

@@ -279,6 +279,95 @@ module Shell::AutoComplete
             produced_names << "--no-" + long_form.id.stringify.gsub(/\A--/, "")
           end
         end
+
+        # ---- bare_number: normalization ----
+        # `head -20`, `less +50`: a token that is the flag and its value at
+        # once. It is another spelling of this flag rather than a flag of its
+        # own, so it shares the value stream, the transformer, the validator
+        # and the help row — `-20 --lines 5` resolves last-wins to 5 exactly
+        # as `--lines 20 --lines 5` does.
+        #
+        # The parser matches these by shape, not by name, so instead of a
+        # spelling the annotation carries the shape: a sign, whether the sign
+        # travels with the value, whether a suffix may follow the digits, or a
+        # `pattern:` that replaces all three. Two flags on one command cannot
+        # claim the same sign; the `-<number>` / `+<number>` markers pushed
+        # into the name registry are what catches that.
+        bn_conf = opts[:bare_number]
+        bn_entry = nil
+        if bn_conf
+          if decl_is_switch
+            raise "bare_number: is not valid on a switch flag (#{decl.var}) — a bare number carries a value, and a switch takes none"
+          end
+          if ["Array", "Set", "Hash"].includes?(decl_type_base)
+            raise "bare_number: is only valid on a scalar flag; #{decl.var} is a #{decl_type_base.id}"
+          end
+          unless bn_conf.is_a?(BoolLiteral) || bn_conf.is_a?(NamedTupleLiteral)
+            raise "bare_number: must be true or a named-tuple config ({sign:/keep_sign:/suffix:/pattern:/label:/description:}) on flag #{decl.var}"
+          end
+          bn_sign = "minus"
+          bn_keep_sign = false
+          bn_suffix = false
+          bn_pattern = nil
+          bn_label = nil
+          bn_description = nil
+          if bn_conf.is_a?(NamedTupleLiteral)
+            bn_conf.keys.each do |bn_key|
+              unless ["sign", "keep_sign", "suffix", "pattern", "label", "description"].includes?(bn_key.stringify)
+                raise "unknown bare_number option #{bn_key} on flag #{decl.var} (expected sign:, keep_sign:, suffix:, pattern:, label:, description:)"
+              end
+            end
+            if bn_given_sign = bn_conf[:sign]
+              bn_sign = bn_given_sign.id.stringify
+              unless ["minus", "plus", "both"].includes?(bn_sign)
+                raise "bare_number sign: must be :minus, :plus or :both on flag #{decl.var}; got #{bn_given_sign}"
+              end
+            end
+            bn_keep_sign = bn_conf[:keep_sign] ? true : false
+            bn_suffix = bn_conf[:suffix] ? true : false
+            bn_label = bn_conf[:label]
+            bn_description = bn_conf[:description]
+            if bn_pattern = bn_conf[:pattern]
+              unless bn_pattern.is_a?(RegexLiteral)
+                raise "bare_number pattern: must be a regex literal on flag #{decl.var}"
+              end
+              # `pattern:` replaces the derived shape wholesale, so a sign or
+              # suffix given beside it would silently do nothing.
+              ["sign", "keep_sign", "suffix"].each do |bn_derived|
+                if bn_conf.keys.map(&.stringify).includes?(bn_derived)
+                  raise "bare_number pattern: replaces the derived shape, so #{bn_derived.id}: has no effect on flag #{decl.var}; drop one of them"
+                end
+              end
+              unless bn_label
+                raise "bare_number pattern: needs label: naming how the shape reads in help on flag #{decl.var} (e.g. label: \"-NUM[KMG]\")"
+              end
+            end
+            if bn_label && !bn_label.is_a?(StringLiteral)
+              raise "bare_number label: must be a string literal on flag #{decl.var}"
+            end
+            if bn_description && !bn_description.is_a?(StringLiteral)
+              raise "bare_number description: must be a string literal on flag #{decl.var}"
+            end
+          end
+          unless bn_label
+            bn_label = bn_sign == "plus" ? "+NUM" : (bn_sign == "both" ? "-NUM|+NUM" : "-NUM")
+          end
+          if bn_pattern
+            # A custom shape can match anything, so it claims both signs.
+            produced_names << "-<number>"
+            produced_names << "+<number>"
+          else
+            produced_names << "-<number>" unless bn_sign == "plus"
+            produced_names << "+<number>" unless bn_sign == "minus"
+          end
+          bn_entry = "{sign: " + bn_sign.stringify +
+                     ", keep_sign: " + bn_keep_sign.stringify +
+                     ", suffix: " + bn_suffix.stringify +
+                     ", pattern: " + (bn_pattern ? bn_pattern.stringify : "nil") +
+                     ", label: " + bn_label.stringify +
+                     ", description: " + (bn_description ? bn_description.stringify : "nil") + "}"
+        end
+
         # ---- shortcut_flags normalization (issue #14, #55) ----
         # Resolve the whole shortcut table once, here at the declaration site,
         # into one entry per generated switch: every spelling it answers to,
@@ -424,7 +513,7 @@ module Shell::AutoComplete
           reg_owners << var_name
         end
 
-        consumed_keys = [:description, :placeholder, :group, :immediate, :transform_with, :validate_with, :negatable, :complete_with, :hidden, :shortcut_flags, :delimiter, :set_operations, :hash_operations, :override]
+        consumed_keys = [:description, :placeholder, :group, :immediate, :transform_with, :validate_with, :negatable, :complete_with, :hidden, :shortcut_flags, :bare_number, :delimiter, :set_operations, :hash_operations, :override]
         forwarded_pairs = [] of StringLiteral
         opts.each do |opt_key, opt_val|
           next if consumed_keys.includes?(opt_key)
@@ -524,6 +613,7 @@ module Shell::AutoComplete
         transform_with: {{ opts[:transform_with] }},
         validate_with: {{ opts[:validate_with] }},
         shortcut_switches: {% if sc_entries.empty? %}[] of ::NamedTuple(spellings: ::Array(::String), value: ::String, description: ::String?, help: ::Bool){% else %}[{{ sc_entries.join(", ").id }}]{% end %},
+        bare_number: {% if bn_entry %}{{ bn_entry.id }}{% else %}nil{% end %},
         set_operations: {% if opts[:set_operations] %}true{% else %}false{% end %},
         hash_operations: {% if opts[:hash_operations] == nil %}true{% else %}{{ opts[:hash_operations] }}{% end %},
         delimiter: {% if opts.keys.map(&.stringify).includes?("delimiter") %}{{ opts[:delimiter] }}{% else %}","{% end %},
