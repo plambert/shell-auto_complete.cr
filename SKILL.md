@@ -116,6 +116,10 @@ shell-completion flag (default `--shell-completion`).
 - **Enums** — `flag level : LogLevel = LogLevel::Info, ...`. Pass a case name.
   Add `shortcut_flags: true` to also generate per-case switches
   (`--debug`, `--info`, …). Not allowed on `@[Flags]` enums.
+  Configure with `{only:/except:/shorts:/aliases:}`: `shorts: {info: "-v"}`
+  gives a case switch a short spelling, `aliases: {quiet: :warn}` adds a named
+  switch, and an alias key or value may spell the switch itself —
+  `aliases: {"-q": :warn}` or `aliases: {quiet: {value: :warn, short: "-q"}}`.
 - **`@[Flags]` enums** — comma-separated values (`--perms read,write`).
   Completion is trailing-comma aware. `shortcut_flags` is rejected here.
 - **Collections** — `Array(T)`, `Set(T)`, `Hash(String, T)`. Repeatable and/or

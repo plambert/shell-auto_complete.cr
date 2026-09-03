@@ -2,6 +2,26 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Added
+
+- `shortcut_flags:` can spell a switch however it likes, so an enum-valued flag can offer a short option and not only a generated `--<case>` long form (#55). Three spellings, all of which register in the duplicate-name checker, count toward `flag_given?`, complete, and render in help:
+  - an alias key that already starts with a dash is used verbatim — `aliases: {"-c": :on, "-C": :off}` gives exactly `-c` and `-C`;
+  - an alias value may be a `{value:, short:, description:}` tuple instead of a bare case symbol — `aliases: {color_on: {value: :on, short: "-c", description: "Force color"}}` gives `--color-on` and `-c` as one switch on one help row;
+  - `shorts:` attaches a short to a switch generated from an enum case — `shortcut_flags: {except: [:auto], shorts: {on: "-c", off: "-C"}}` gives `--on, -c` and `--off, -C` without excluding the cases and re-adding them as aliases.
+
+  A short spelling must be a single character after the dash, matching what the parser accepts; a spelling colliding with another flag, or naming a reserved flag, is a compile error, as is a `shorts:` entry for a case that `only:`/`except:` filtered out.
+
+### Changed
+
+- Shortcut switches render indented under the flag whose value they force, rather than as free-standing `Alias for --log-level warn` rows further down the option list. A switch generated from an enum case is listed only when it carries a short spelling — a plain `--debug` is already implied by the flag's own `debug|info|warn|error` placeholder, while a short is invisible without a row of its own. The generated description is now `Same as --log-level warn`, and an alias may replace it with `description:`. `Help::FlagRow` gained an `indent : Bool` field.
+- An alias switch is grouped with the flag it belongs to, so a shortcut on a `group:`-ed or inherited flag no longer lands under a different heading than its parent.
+
+### Fixed
+
+- `shortcut_flags:` on a flag whose declared type does not resolve to a single enum is a compile error naming the flag. It previously generated no switches at all and, worse, registered none of them in the duplicate-name checker, so a colliding spelling elsewhere went unreported.
+
 ## [2.5.0] - 2026-07-26
 
 ### Fixed

@@ -84,7 +84,7 @@ describe "shortcut_flags aliases:" do
   it "lists aliases in help with their target value" do
     rendered = SCConfCli.help
     rendered.should contain("--quiet")
-    rendered.should contain("Alias for --log-level warn")
+    rendered.should contain("Same as --log-level warn")
   end
 
   it "offers aliases in completion" do

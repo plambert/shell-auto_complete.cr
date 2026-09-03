@@ -14,7 +14,8 @@ require "../../src/shell-auto_complete"
 #     `containers --format json rm` is rejected because `rm` imports no
 #     `--format`
 #   * `--version` via `tool_version` plus a `version` subcommand
-#   * `shortcut_flags` configuration on an enum flag (`--log-level`)
+#   * `shortcut_flags` configuration on an enum flag (`--log-level`), including
+#     short spellings for both a generated case switch and an alias
 #   * a `group:` heading on the connection flags and `help_sections:` reordering
 #   * explicit and type-derived value placeholders
 
@@ -83,7 +84,11 @@ Shell::AutoComplete.command Containers,
     group: "Connection options",
     shortcut_flags: {
       except:  [:none, :debug],
-      aliases: {silent: :warn, verbose: :info},
+      shorts:  {warn: "-w"},
+      aliases: {
+        silent:  {value: :warn, short: "-s", description: "Log warnings and errors only"},
+        verbose: {value: :info, short: "-v"},
+      },
     }
 
   # Resolved connection string, shared with every inheriting subcommand.
