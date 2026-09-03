@@ -1,6 +1,18 @@
 module Shell::AutoComplete
   {% begin %}
     VERSION = {{ `shards version #{__DIR__}/..`.stringify.chomp }}
+
+    # The version of the project being compiled — not this shard's own, which
+    # is `VERSION` above. It is the last-resort fallback for `--version` when a
+    # command has no `tool_version` and no `VERSION` constant in scope.
+    #
+    # Captured once, here, because `shards version` is a subprocess run during
+    # macro expansion: two independent invocations in one compile read
+    # `shard.yml` at two different moments, and disagree if the file changes in
+    # between — which is exactly what happens while cutting a release. Every
+    # consumer, `Command.version_string` and the specs alike, reads this
+    # constant so the value cannot differ within a build.
+    SHARDS_PROJECT_VERSION = {{ `shards version 2>/dev/null || echo unknown`.strip.stringify }}
   {% end %}
 end
 

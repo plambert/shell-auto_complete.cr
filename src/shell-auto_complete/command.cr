@@ -82,8 +82,8 @@ module Shell::AutoComplete
       # visible from this class (the class itself, each enclosing namespace,
       # the top level, or an inherited command) — emitted as a plain
       # constant reference so Crystal's own lexical lookup picks the nearest
-      # one; finally the project's `shards version`, captured at compile
-      # time.
+      # one; finally `SHARDS_PROJECT_VERSION`, the compiling project's version
+      # captured once at compile time.
       def self.version_string : String
         \{% begin %}
           \{% if ([@type] + @type.ancestors).any? { |owner_type| owner_type.has_constant?("TOOL_VERSION") } %}
@@ -105,7 +105,7 @@ module Shell::AutoComplete
             \{% if version_const_found %}
               VERSION.to_s
             \{% else %}
-              \{{ `shards version 2>/dev/null || echo unknown`.strip.stringify }}
+              ::Shell::AutoComplete::SHARDS_PROJECT_VERSION
             \{% end %}
           \{% end %}
         \{% end %}

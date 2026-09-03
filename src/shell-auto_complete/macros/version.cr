@@ -12,8 +12,9 @@ module Shell::AutoComplete
     # subcommand), e.g. `tool_version "1.0.0"`. When not set, the nearest
     # `VERSION` constant visible from the command class (the class itself,
     # its enclosing namespaces, the top level, or an inherited command) is
-    # used; failing that, the project's `shards version` is captured at
-    # compile time. Read back via `.version_string`.
+    # used; failing that, `Shell::AutoComplete::SHARDS_PROJECT_VERSION`, the
+    # compiling project's version captured once at compile time. Read back via
+    # `.version_string`.
     macro tool_version(version)
       {% raise "tool_version must be a string literal" unless version.is_a?(StringLiteral) %}
       TOOL_VERSION = {{ version }}

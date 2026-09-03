@@ -3,10 +3,10 @@ require "file_utils"
 
 private def compile_fragment(body : String) : Process::Status
   src = <<-CR
-    require "./src/shell-auto_complete"
+    require "../src/shell-auto_complete"
     #{body}
     CR
-  tmp = File.tempfile("sac-extsub", ".cr", dir: "#{__DIR__}/../..")
+  tmp = File.tempfile("sac-extsub", ".cr", dir: spec_tmp_dir)
   begin
     File.write(tmp.path, src)
     Process.run("crystal", ["build", "--no-debug", "--no-codegen", tmp.path],
@@ -22,7 +22,7 @@ end
 # (it replaces the runner), so the handoff is tested by running the binary.
 private def build_ext_tool : String
   src = <<-CR
-    require "./src/shell-auto_complete"
+    require "../src/shell-auto_complete"
     Shell::AutoComplete.command ExtToolBuild, name: "build", description: "x" do
       def run
         puts "internal-build"
@@ -37,9 +37,10 @@ private def build_ext_tool : String
     end
     ExtTool.dispatch(ARGV)
     CR
-  # The source must sit at the repo root so `require "./src/..."` resolves.
-  # Crystal writes the binary beside it; both are cleaned up at exit.
-  tmp = File.tempfile("sac-exttool", ".cr", dir: "#{__DIR__}/../..")
+  # The source sits one level under the repo root so its
+  # `require "../src/..."` resolves. Crystal writes the binary beside it;
+  # both are cleaned up at exit.
+  tmp = File.tempfile("sac-exttool", ".cr", dir: spec_tmp_dir)
   bin = tmp.path.chomp(".cr") + ".bin"
   File.write(tmp.path, src)
   status = Process.run("crystal", ["build", "--no-debug", tmp.path, "-o", bin],
@@ -141,7 +142,7 @@ describe "external_subcommands" do
     dir = File.tempname("sac-extsp")
     Dir.mkdir_p(dir)
     src = <<-CR
-      require "./src/shell-auto_complete"
+      require "../src/shell-auto_complete"
       Shell::AutoComplete.command SpTool, name: "sptool", description: "x" do
         external_subcommands search_path: "cmds:#{dir}/abs"
         def run
@@ -150,7 +151,7 @@ describe "external_subcommands" do
       end
       SpTool.dispatch(ARGV)
       CR
-    tmp = File.tempfile("sac-sptool", ".cr", dir: "#{__DIR__}/../..")
+    tmp = File.tempfile("sac-sptool", ".cr", dir: spec_tmp_dir)
     bin = File.join(dir, "sptool")
     File.write(tmp.path, src)
     build_ok = Process.run("crystal", ["build", "--no-debug", tmp.path, "-o", bin],

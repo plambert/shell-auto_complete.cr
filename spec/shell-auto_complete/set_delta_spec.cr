@@ -121,12 +121,12 @@ end
 describe "Hash positionals are rejected at compile time" do
   it "points the user at SetDelta" do
     src = <<-CR
-      require "./src/shell-auto_complete"
+      require "../src/shell-auto_complete"
       Shell::AutoComplete.command BadHashPos, name: "x", description: "x" do
         positionals items : Hash(String, Bool), "items"
       end
       CR
-    tmp = File.tempfile("sac-hashpos", ".cr", dir: File.expand_path("#{__DIR__}/../.."))
+    tmp = File.tempfile("sac-hashpos", ".cr", dir: spec_tmp_dir)
     begin
       File.write(tmp.path, src)
       result = Process.run("crystal",

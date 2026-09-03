@@ -3,9 +3,10 @@ require "../spec_helper"
 # tool_name / tool_version macros, the --version intercept, the
 # disable_version_flag opt-out, and the version subcommand.
 
-# Resolved the same way the library's fallback resolves it, so the spec does
-# not hard-code the shard's current version.
-SHARDS_PROJECT_VERSION = {{ `shards version`.strip.stringify }}
+# The library's own fallback constant, not a second reading of it. Shelling
+# out to `shards version` again here raced the library's invocation whenever
+# shard.yml changed mid-compile, which is what cutting a release does.
+SHARDS_PROJECT_VERSION = Shell::AutoComplete::SHARDS_PROJECT_VERSION
 
 Shell::AutoComplete.command VersionDefaultCli, name: "vdefault", description: "x" do
   def run
@@ -147,9 +148,8 @@ describe "enable_version_subcommand" do
   end
 
   it "prints the same line as --version when run" do
-    project_root = "#{__DIR__}/../.."
     src = <<-CR
-      require "./src/shell-auto_complete"
+      require "../src/shell-auto_complete"
 
       Shell::AutoComplete.command VersionBinCli, name: "vbin", description: "x" do
         tool_name "vbin"
@@ -159,8 +159,8 @@ describe "enable_version_subcommand" do
 
       VersionBinCli.dispatch(ARGV)
       CR
-    src_file = File.tempfile("sac-version-src", ".cr", dir: project_root)
-    bin_file = File.tempfile("sac-version-bin", dir: project_root)
+    src_file = File.tempfile("sac-version-src", ".cr", dir: spec_tmp_dir)
+    bin_file = File.tempfile("sac-version-bin", dir: spec_tmp_dir)
     bin_file.close
     begin
       File.write(src_file.path, src)

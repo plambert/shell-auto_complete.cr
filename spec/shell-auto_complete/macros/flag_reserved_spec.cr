@@ -8,11 +8,10 @@ require "../../spec_helper"
 # requires relative to the source file, not the working directory).
 private def compile_fragment(body : String) : Process::Status
   src = <<-CR
-    require "./src/shell-auto_complete"
+    require "../src/shell-auto_complete"
     #{body}
     CR
-  project_root = File.expand_path("#{__DIR__}/../../..")
-  tmp = File.tempfile("sac-flag-reserved", ".cr", dir: project_root)
+  tmp = File.tempfile("sac-flag-reserved", ".cr", dir: spec_tmp_dir)
   begin
     File.write(tmp.path, src)
     Process.run("crystal", ["build", "--no-debug", "--no-codegen", tmp.path],

@@ -1,13 +1,12 @@
 require "../spec_helper"
 
 private def compile_fragment(body : String) : Process::Status
-  project_root = Path.new(__DIR__, "..", "..").normalize.to_s
   # Tempfile lives in the project root; relative require resolves from its location
   src = <<-CR
-    require "./src/shell-auto_complete"
+    require "../src/shell-auto_complete"
     #{body}
     CR
-  tmp = File.tempfile("sac-union", ".cr", dir: project_root)
+  tmp = File.tempfile("sac-union", ".cr", dir: spec_tmp_dir)
   begin
     File.write(tmp.path, src)
     Process.run("crystal", ["build", "--no-debug", "--no-codegen", tmp.path],

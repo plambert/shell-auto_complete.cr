@@ -4,9 +4,8 @@ require "../spec_helper"
 # Each test spawns a subprocess so we can observe the real exit code and stderr
 # without the rescue path terminating the spec runner.
 private def run_rescue_example(argv : Array(String)) : NamedTuple(stdout: String, stderr: String, status: Process::Status)
-  project_root = "#{__DIR__}/../.."
   src = <<-'CR'
-    require "./src/shell-auto_complete"
+    require "../src/shell-auto_complete"
 
     Shell::AutoComplete.command RescueExample, name: "rescuex", description: "rescue test" do
       flag count : Int32 = 1, "--count", "c", range: 1..10
@@ -18,8 +17,8 @@ private def run_rescue_example(argv : Array(String)) : NamedTuple(stdout: String
 
     RescueExample.dispatch(ARGV)
     CR
-  src_file = File.tempfile("sac-rescue-src", ".cr", dir: project_root)
-  bin_file = File.tempfile("sac-rescue-bin", dir: project_root)
+  src_file = File.tempfile("sac-rescue-src", ".cr", dir: spec_tmp_dir)
+  bin_file = File.tempfile("sac-rescue-bin", dir: spec_tmp_dir)
   # Close the binary's fd before `crystal build` writes it: on Linux, exec'ing a
   # path that still has an open writable fd raises ETXTBSY (macOS is lenient).
   bin_file.close
@@ -67,9 +66,8 @@ end
 
 describe "dispatch rescue prints full path for nested commands" do
   it "<parent> <child>: <msg>" do
-    project_root = "#{__DIR__}/../.."
     src = <<-CR
-      require "./src/shell-auto_complete"
+      require "../src/shell-auto_complete"
 
       Shell::AutoComplete.command NestedChild, name: "child", description: "c" do
         flag value : Int32?, "--value", "v"
@@ -83,8 +81,8 @@ describe "dispatch rescue prints full path for nested commands" do
 
       NestedParent.dispatch(ARGV)
       CR
-    src_file = File.tempfile("sac-nested-err-src", ".cr", dir: project_root)
-    bin_file = File.tempfile("sac-nested-err-bin", dir: project_root)
+    src_file = File.tempfile("sac-nested-err-src", ".cr", dir: spec_tmp_dir)
+    bin_file = File.tempfile("sac-nested-err-bin", dir: spec_tmp_dir)
     # See note above: close the fd so Linux can exec the compiled binary.
     bin_file.close
     begin

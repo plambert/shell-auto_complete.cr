@@ -7,10 +7,10 @@ require "log"
 
 private def compile_fragment(body : String) : {Process::Status, String}
   src = <<-CR
-    require "./src/shell-auto_complete"
+    require "../src/shell-auto_complete"
     #{body}
     CR
-  tmp = File.tempfile("sac-ph", ".cr", dir: "#{__DIR__}/../..")
+  tmp = File.tempfile("sac-ph", ".cr", dir: spec_tmp_dir)
   begin
     File.write(tmp.path, src)
     error_io = IO::Memory.new

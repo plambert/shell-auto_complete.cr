@@ -10,7 +10,8 @@ FROM crystallang/crystal:${CRYSTAL_VERSION}
 WORKDIR /src
 
 # shard.yml is required at compile time: src/shell-auto_complete.cr derives
-# VERSION by shelling out to `shards version` against this directory. The lock
+# VERSION and SHARDS_PROJECT_VERSION by shelling out to `shards version`
+# against this directory. The lock
 # is copied for completeness/reproducibility should dependencies ever be added.
 # This shard currently has no dependencies, so `shards install` is intentionally
 # omitted (it would only add a tooling failure mode unrelated to the compiler).

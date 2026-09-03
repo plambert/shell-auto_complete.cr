@@ -2,10 +2,10 @@ require "../spec_helper"
 
 private def compile_fragment(body : String) : Process::Status
   src = <<-CR
-    require "./src/shell-auto_complete"
+    require "../src/shell-auto_complete"
     #{body}
     CR
-  tmp = File.tempfile("sac-subcmd", ".cr", dir: "#{__DIR__}/../..")
+  tmp = File.tempfile("sac-subcmd", ".cr", dir: spec_tmp_dir)
   begin
     File.write(tmp.path, src)
     Process.run("crystal", ["build", "--no-debug", "--no-codegen", tmp.path],

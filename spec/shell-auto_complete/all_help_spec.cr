@@ -73,13 +73,13 @@ describe "--all-help" do
 
   it "rejects user-declared --all-help flag at compile time" do
     src = <<-CR
-      require "./src/shell-auto_complete"
+      require "../src/shell-auto_complete"
       Shell::AutoComplete.command BadAllHelp, name: "x", description: "x" do
         flag foo : String?, "--all-help", "x"
       end
       CR
     tmp = File.tempfile("sac-allhelp-reserved", ".cr",
-      dir: File.expand_path("#{__DIR__}/../.."))
+      dir: spec_tmp_dir)
     begin
       File.write(tmp.path, src)
       result = Process.run("crystal",
