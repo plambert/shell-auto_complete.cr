@@ -2,12 +2,19 @@
 
 All notable changes are documented here.
 
-## [Unreleased]
+## [2.6.1] - 2026-09-03
 
 ### Fixed
 
 - `--version`'s last-resort fallback reads a single `SHARDS_PROJECT_VERSION` constant instead of shelling out to `shards version` on its own. `shards version` runs as a subprocess during macro expansion, and the library and `version_flag_spec.cr` each invoked it independently, so one compile read `shard.yml` at two different moments and the two disagreed if the file changed in between — which is what cutting a release does. Bumping the version while the suite was running failed the fallback example with a version mismatch that had nothing to do with the code under test. The constant is captured once in `Shell::AutoComplete` and both now read it.
 - The specs that write a real file and shell out to the compiler — the compile-fragment helpers and the ones that build and run a binary — write into a gitignored `.spec-tmp/` instead of the project root. Transient `sac-*.cr` / `sac-*.bin` files used to appear in `git status` for the length of a run, where a `git add -A` would commit them. The directory sits one level under the root so a fragment's `require "../src/shell-auto_complete"` still resolves.
+
+### Changed
+
+- An enum flag given a name that matches no member now rejects it with the
+  allowed values — `wat is not one of obligation, acquisition` — in the same
+  wording a `choices:` flag uses, instead of `Unknown enum <Crystal type>
+  value: wat`. Members are listed kebab-cased, as completion offers them.
 
 ## [2.6.0] - 2026-09-03
 
