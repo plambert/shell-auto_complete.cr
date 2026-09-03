@@ -17,11 +17,19 @@ Shell::AutoComplete.command CatCli, name: "cat",
   flag show_nonprinting : Bool = false, "--show-nonprinting", "-v",
     "Show non-printing characters with ^X / M- notation"
 
+  # The `head -20` shape: the number is the flag. It sets the same property
+  # the long form does, so `-20 --lines 5` is 5, and the value goes through
+  # Int32's transform and the range check like any other value.
+  flag lines : Int32? = nil, "--lines N", "Stop after N lines",
+    bare_number: true, range: 1..
+
   positionals files : Array(Path), "Files to read (use - for stdin)"
 
   def run
     line_no = 0
+    printed = 0
     last_was_blank = false
+    limit = lines
 
     sources = files.empty? ? [Path.new("-")] : files
 
@@ -55,6 +63,9 @@ Shell::AutoComplete.command CatCli, name: "cat",
           end
 
           STDOUT.flush if unbuffered
+
+          printed += 1
+          return if limit && printed >= limit
         end
       ensure
         io.close unless io == STDIN

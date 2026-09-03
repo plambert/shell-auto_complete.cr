@@ -54,6 +54,47 @@ List extra spellings as more string literals. Anything starting with `--` is a l
 `-x` is the short form (one per flag). The first non-dash string is the description. All spellings
 parse, complete, and (for switches) get their own `--no-` negation.
 
+### Accept a bare number like `head -20` or `less +50`
+
+```crystal
+flag lines : Int32 = 10, "--lines N", "Lines to show", bare_number: true
+```
+
+`bare_number:` makes `-20` another spelling of this flag, carrying its value in the same token. It
+feeds the flag's own value stream, so `-20 --lines 5` resolves last-wins to `5`, `flag_given?`
+counts either, and the number goes through the flag's normal transform and validation.
+
+`sign:` picks which sign it answers to — `:minus` (the default), `:plus`, or `:both` — so two flags
+can take opposite signs:
+
+```crystal
+flag lines : Int32 = 10, "--lines N", "Lines to show", bare_number: {sign: :minus}  # -20
+flag start : Int32?,     "--start N", "Start line",     bare_number: {sign: :plus}   # +50
+```
+
+`keep_sign: true` hands the sign to the flag along with the digits, for a value that is itself
+signed. `suffix: true` lets a unit or scale follow them, so `-123M` reaches a `String` or custom
+type. For any other shape, `pattern:` takes a regex whose first capture group is the value, with a
+`label:` naming how it reads in help:
+
+```crystal
+flag width : Int32 = 80, "--width N", "Width",
+  bare_number: {pattern: /\A-w(\d+)\z/, label: "-wNUM"}
+```
+
+Only scalar, non-switch flags take it, two flags cannot claim the same sign, and a `+` sign
+alongside a [`SetDelta` positional](#toggle-a-set-of-things-on-and-off-in-one-invocation) — which
+reads `+name` tokens — is a compile error rather than a silent race for `+20`. The shape is tried
+only after every declared spelling, so it never shadows a real flag. It shows in help as an
+indented row under its flag, and is offered as no completion candidate, a number not being
+something to complete:
+
+```text
+Options:
+  --lines N                   Lines to show
+      -NUM                    Same as --lines with that number
+```
+
 ### Make a flag accept only a fixed set of values
 
 ```crystal

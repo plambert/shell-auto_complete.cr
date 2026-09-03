@@ -271,7 +271,15 @@ module Shell::AutoComplete
                   spellings_\{{ivar.name}} << \{{sc_spelling}}
                 \{% end %}
               \{% end %}
-              return parsed_occurrences.any? { |occurrence| spellings_\{{ivar.name}}.includes?(occurrence[0]) }
+              # A bare number is recorded as typed (`-20`), which is not one of
+              # the fixed spellings, so it has to be recognized by shape here
+              # too or the flag would look untouched after `-20`.
+              \{% if bn = fann[:bare_number] %}
+                bare_pattern_\{{ivar.name}} = \{% if bn[:pattern] %}\{{bn[:pattern]}}\{% else %}::Shell::AutoComplete::Parser.bare_number_pattern(\{{bn[:sign]}}, \{{bn[:keep_sign]}}, \{{bn[:suffix]}})\{% end %}
+                return parsed_occurrences.any? { |occurrence| spellings_\{{ivar.name}}.includes?(occurrence[0]) || bare_pattern_\{{ivar.name}}.matches?(occurrence[0]) }
+              \{% else %}
+                return parsed_occurrences.any? { |occurrence| spellings_\{{ivar.name}}.includes?(occurrence[0]) }
+              \{% end %}
             end
           \{% end %}
         \{% end %}
@@ -279,6 +287,22 @@ module Shell::AutoComplete
       end
 
       def self.parse(argv : Array(String)) : self
+        # A `+`-signed bare-number flag and a SetDelta variadic positional
+        # both claim `+20`, and there is no reading of the command line that
+        # satisfies both. Positionals and flags are declared independently, so
+        # the clash can only be seen once the whole class body has expanded —
+        # here.
+        \{% begin %}
+          \{% set_delta_ivar = @type.instance_vars.find { |iv| (pann = iv.annotation(::Shell::AutoComplete::PositionalsDef)) && pann[:set_delta] } %}
+          \{% if set_delta_ivar %}
+            \{% for ivar in @type.instance_vars %}
+              \{% if (fann = ivar.annotation(::Shell::AutoComplete::FlagDef)) && (bn = fann[:bare_number]) && (bn[:pattern] || bn[:sign] != "minus") %}
+                \{% raise "flag #{ivar.name} takes a `+`-signed bare number, but the positional #{set_delta_ivar.name} is a SetDelta that reads `+name` tokens, so `+20` is ambiguous; give the flag `bare_number: {sign: :minus}` or drop set_operations from the positional" %}
+              \{% end %}
+            \{% end %}
+          \{% end %}
+        \{% end %}
+
         # Delimited flags (issue: delimited_flag) capture a run of raw tokens
         # ending at a delimiter, which is discarded; parsing then resumes on
         # the remaining tokens. Extract those runs before the normal parser
@@ -378,6 +402,19 @@ module Shell::AutoComplete
                   takes_value: false,
                   bool_value: nil,
                   forced_value: \{{sc[:value]}},
+                )
+              \{% end %}
+              # A bare-number spelling (`-20`, `+50`) is matched by shape
+              # rather than by name, and feeds this flag's own value stream,
+              # so it transforms, validates and resolves last-wins exactly as
+              # the long form does.
+              \{% if bn = fann[:bare_number] %}
+                specs << ::Shell::AutoComplete::Parser::FlagSpec.new(
+                  canonical: \{{fann[:canonical]}},
+                  names: [] of ::String,
+                  takes_value: false,
+                  bool_value: nil,
+                  pattern: \{% if bn[:pattern] %}\{{bn[:pattern]}}\{% else %}::Shell::AutoComplete::Parser.bare_number_pattern(\{{bn[:sign]}}, \{{bn[:keep_sign]}}, \{{bn[:suffix]}})\{% end %},
                 )
               \{% end %}
             \{% end %}
@@ -901,6 +938,20 @@ module Shell::AutoComplete
                 group:       \{% if fann[:group] %}\{{fann[:group]}}.as(::String?)\{% elsif inherited_ivar %}"Inherited options".as(::String?)\{% else %}nil.as(::String?)\{% end %},
                 indent:      false,
               }
+              # A bare-number spelling has no name to list among the flag's
+              # forms, so it gets its own indented row showing the shape it
+              # accepts. Nothing else in help would reveal that `-20` works.
+              \{% if bn = fann[:bare_number] %}
+                flags << {
+                  canonical:   \{{bn[:label]}}.as(::String),
+                  aliases:     ([] of ::String),
+                  short:       nil.as(::String?),
+                  description: \{% if bn[:description] %}\{{bn[:description]}}\{% else %}("Same as " + \{{fann[:canonical]}} + " with that number")\{% end %}.as(::String),
+                  placeholder: nil.as(::String?),
+                  group:       \{% if fann[:group] %}\{{fann[:group]}}.as(::String?)\{% elsif inherited_ivar %}"Inherited options".as(::String?)\{% else %}nil.as(::String?)\{% end %},
+                  indent:      true,
+                }
+              \{% end %}
               # Shortcut switches render indented under the flag they force a
               # value on. A switch derived from an enum case is listed only
               # when it carries a short spelling, which nothing else in help
@@ -1422,7 +1473,15 @@ module Shell::AutoComplete
                   \{% end %}
                 \{% end %}
               \{% end %}
-              pos_slot = ::Shell::AutoComplete::Completion::Positional.index_at(words, cword, pos_value_flags)
+              pos_bare_patterns = [] of ::Regex
+              \{% for ivar in @type.instance_vars %}
+                \{% if (fann = ivar.annotation(::Shell::AutoComplete::FlagDef)) && !@type.constant("OVERRIDDEN_FLAG_IVARS").includes?(ivar.name.stringify) %}
+                  \{% if bn = fann[:bare_number] %}
+                    pos_bare_patterns << \{% if bn[:pattern] %}\{{bn[:pattern]}}\{% else %}::Shell::AutoComplete::Parser.bare_number_pattern(\{{bn[:sign]}}, \{{bn[:keep_sign]}}, \{{bn[:suffix]}})\{% end %}
+                  \{% end %}
+                \{% end %}
+              \{% end %}
+              pos_slot = ::Shell::AutoComplete::Completion::Positional.index_at(words, cword, pos_value_flags, pos_bare_patterns)
               if pos_slot
                 \{% for i in 0...p_leading.size %}
                   \{% pivar = p_leading[i] %}
@@ -1732,6 +1791,29 @@ module Shell::AutoComplete
                 \{% end %}
               \{% end %}
             \{% end %}
+            # Bare-number spellings are matched by shape, so the walk cannot
+            # look them up in the token lists. A `+50` does not even read as a
+            # flag, and without this the walk would take it for the subcommand
+            # word. Subcommand-declared shapes are gathered too, for the same
+            # reason the routing union gathers their flag names: the parent has
+            # to walk past a flag it does not declare itself.
+            route_bare_patterns = [] of ::Regex
+            \{% for ivar in @type.instance_vars %}
+              \{% if (fann = ivar.annotation(::Shell::AutoComplete::FlagDef)) && !@type.constant("OVERRIDDEN_FLAG_IVARS").includes?(ivar.name.stringify) %}
+                \{% if bn = fann[:bare_number] %}
+                  route_bare_patterns << \{% if bn[:pattern] %}\{{bn[:pattern]}}\{% else %}::Shell::AutoComplete::Parser.bare_number_pattern(\{{bn[:sign]}}, \{{bn[:keep_sign]}}, \{{bn[:suffix]}})\{% end %}
+                \{% end %}
+              \{% end %}
+            \{% end %}
+            \{% for sub_node in @type.constant("SUBCOMMAND_CLASS_NODES") %}
+              \{% for ivar in sub_node.resolve.instance_vars %}
+                \{% if (sfann = ivar.annotation(::Shell::AutoComplete::FlagDef)) && !sub_node.resolve.constant("OVERRIDDEN_FLAG_IVARS").includes?(ivar.name.stringify) %}
+                  \{% if sbn = sfann[:bare_number] %}
+                    route_bare_patterns << \{% if sbn[:pattern] %}\{{sbn[:pattern]}}\{% else %}::Shell::AutoComplete::Parser.bare_number_pattern(\{{sbn[:sign]}}, \{{sbn[:keep_sign]}}, \{{sbn[:suffix]}})\{% end %}
+                  \{% end %}
+                \{% end %}
+              \{% end %}
+            \{% end %}
             route_index = 0
             subcommand_word = nil
             subcommand_index = -1
@@ -1746,6 +1828,11 @@ module Shell::AutoComplete
                 next
               end
               break if route_token == "--"
+              if !route_bare_patterns.empty? && route_bare_patterns.any?(&.matches?(route_token))
+                # Carries its own value, so nothing follows it to skip.
+                route_index += 1
+                next
+              end
               if route_token.starts_with?("-") && route_token.size > 1
                 route_name = route_token.partition('=')[0]
                 if value_flag_tokens.includes?(route_name)

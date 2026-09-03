@@ -10,7 +10,11 @@ module Shell::AutoComplete::Completion
     # consume no following token. Mirrors the parser's argument consumption:
     # `--flag=value` is a single token, a `--` terminator forces everything
     # after it to be positional.
-    def self.index_at(words : Array(String), cword : Int32, value_flag_names : Set(String)) : Int32?
+    #
+    # `bare_number_patterns` holds the shapes of any `bare_number:` flags. A
+    # `-20` token already reads as a flag, but a `+50` does not, and counting
+    # it as a positional would shift every slot after it by one.
+    def self.index_at(words : Array(String), cword : Int32, value_flag_names : Set(String), bare_number_patterns : Array(Regex) = [] of Regex) : Int32?
       current = cword < words.size ? words[cword] : ""
 
       after_terminator = false
@@ -28,8 +32,9 @@ module Shell::AutoComplete::Completion
           i += 1
           next
         end
-        if flag_token?(tok)
-          # `--flag=value` is self-contained; a bare value flag eats the next token.
+        if flag_token?(tok) || bare_number_patterns.any?(&.matches?(tok))
+          # `--flag=value` is self-contained; a bare value flag eats the next
+          # token. A bare number carries its own value and eats nothing.
           if !tok.includes?('=') && value_flag_names.includes?(tok)
             i += 2
           else
@@ -43,7 +48,7 @@ module Shell::AutoComplete::Completion
 
       unless after_terminator
         # Cursor on a flag name → not a positional.
-        return if flag_token?(current)
+        return if flag_token?(current) || bare_number_patterns.any?(&.matches?(current))
         # Cursor on a value-taking flag's value → not a positional.
         prev = cword > 0 ? words[cword - 1] : ""
         return if !prev.includes?('=') && value_flag_names.includes?(prev)
