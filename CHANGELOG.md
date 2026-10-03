@@ -2,6 +2,15 @@
 
 All notable changes are documented here.
 
+## [2.6.2] - 2026-10-02
+
+### Fixed
+
+- A command that has subcommands and its own `run` now runs when invoked with no arguments. Dispatch
+  used to print the help for every bare routing command and return without calling `run`, so an
+  application that grew a subcommand stopped starting on a plain invocation. The help is still
+  printed for a bare routing command that has no `run` of its own.
+
 ## [2.6.1] - 2026-09-03
 
 ### Fixed
