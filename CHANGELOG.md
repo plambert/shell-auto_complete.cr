@@ -4,6 +4,10 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- `external_subcommands` is POSIX only. Windows has no `exec` to hand the process to another program with, so enabling it in a Windows build is a compile error that says so. A tool that builds on both can wrap the declaration in `{% unless flag?(:win32) %}`.
+
 ### Fixed
 
 - `VERSION` and `SHARDS_PROJECT_VERSION` are read on Windows too. The compiler runs a macro's command there with no shell, so the `2>/dev/null || echo unknown` fallback reached `shards` as arguments and stopped the build. Windows gets the directory in double quotes and asks `cmd` for the fallback; elsewhere the commands are as they were, except that `VERSION`'s directory is now quoted, so a path with a space in it no longer breaks it.

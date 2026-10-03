@@ -34,9 +34,16 @@ module Shell::AutoComplete
     # Only valid on a root command: declaring it on a `parent:`-derived command
     # is a compile error, since the executable name is built from one tool
     # prefix.
+    #
+    # POSIX only. Windows has no `exec`, so enabling it there is a compile
+    # error; wrap the declaration in `{% unless flag?(:win32) %}` for a tool
+    # that builds on both.
     macro external_subcommands(enabled = true, search_path = nil)
       {%
         raise "external_subcommands takes true or false (got #{enabled})" unless enabled.is_a?(BoolLiteral)
+        if enabled && flag?(:win32)
+          raise "external_subcommands is POSIX only: Windows has no exec to hand the process over with"
+        end
         if @type.superclass && @type.superclass.has_constant?("SUBCOMMANDS")
           raise "external_subcommands can only be declared on a root command; #{@type} derives from #{@type.superclass} via parent:"
         end

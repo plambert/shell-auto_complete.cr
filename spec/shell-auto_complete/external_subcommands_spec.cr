@@ -1,4 +1,8 @@
 require "../spec_helper"
+
+# External subcommands are POSIX only: Windows has no exec.
+{% skip_file if flag?(:win32) %}
+
 require "file_utils"
 
 private def compile_fragment(body : String) : Process::Status
