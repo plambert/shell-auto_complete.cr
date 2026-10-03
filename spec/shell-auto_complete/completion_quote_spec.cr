@@ -96,15 +96,16 @@ describe "--shell-completion --absolute" do
     io = IO::Memory.new
     QClean.dispatch(["--shell-completion", "bash", "--absolute"], stdout: io)
     callback = io.to_s.lines.find!(&.includes?("__complete"))
-    # An absolute, single-quoted path, not the bare command name.
-    callback.should match(/out=\$\('\/.+' __complete/)
+    # An absolute, single-quoted path, not the bare command name: from the
+    # root on Unix, from a drive on Windows.
+    callback.should match(/out=\$\('(\/|[A-Za-z]:\\).+' __complete/)
     io.to_s.should contain("complete -F _tool 'tool'")
   end
 
   it "accepts the -a short form" do
     io = IO::Memory.new
     QClean.dispatch(["--shell-completion", "bash", "-a"], stdout: io)
-    io.to_s.lines.find!(&.includes?("__complete")).should match(/out=\$\('\//)
+    io.to_s.lines.find!(&.includes?("__complete")).should match(/out=\$\('(\/|[A-Za-z]:\\)/)
   end
 
   it "keeps the bare command name without the option" do

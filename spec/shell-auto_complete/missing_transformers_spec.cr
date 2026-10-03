@@ -48,7 +48,8 @@ end
 
 describe "Dir transformer" do
   it "returns a Path when the directory exists" do
-    DirCli.parse(["--path", "/tmp"]).path.should eq(Path.new("/tmp"))
+    # A directory every platform has. Windows has no /tmp.
+    DirCli.parse(["--path", Dir.tempdir]).path.should eq(Path.new(Dir.tempdir))
   end
 
   it "raises when the directory does not exist" do

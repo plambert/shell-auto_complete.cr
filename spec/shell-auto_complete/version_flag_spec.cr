@@ -160,26 +160,25 @@ describe "enable_version_subcommand" do
       VersionBinCli.dispatch(ARGV)
       CR
     src_file = File.tempfile("sac-version-src", ".cr", dir: spec_tmp_dir)
-    bin_file = File.tempfile("sac-version-bin", dir: spec_tmp_dir)
-    bin_file.close
+    bin_path = spec_binary("sac-version-bin")
     begin
       File.write(src_file.path, src)
       build = Process.run(
         "crystal",
-        ["build", src_file.path, "--no-debug", "-o", bin_file.path],
+        ["build", src_file.path, "--no-debug", "-o", bin_path],
         output: Process::Redirect::Close,
         error: Process::Redirect::Close,
       )
       raise "compile failed" unless build.success?
       sub_io = IO::Memory.new
-      Process.run(bin_file.path, ["version"], output: sub_io).success?.should be_true
+      Process.run(bin_path, ["version"], output: sub_io).success?.should be_true
       sub_io.to_s.should eq("vbin 2.7.1\n")
       flag_io = IO::Memory.new
-      Process.run(bin_file.path, ["--version"], output: flag_io).success?.should be_true
+      Process.run(bin_path, ["--version"], output: flag_io).success?.should be_true
       flag_io.to_s.should eq("vbin 2.7.1\n")
     ensure
       src_file.delete
-      File.delete(bin_file.path) if File.exists?(bin_file.path)
+      File.delete?(bin_path)
     end
   end
 end
