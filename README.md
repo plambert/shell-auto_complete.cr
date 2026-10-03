@@ -207,8 +207,10 @@ a `Hash(String, Bool)`. The placeholder in the usage line is derived from the pr
 Routing walks past the parent's own flags to find the subcommand word, so a shared flag may sit
 before or after it. When a subcommand declares a flag the parent doesn't, the parent still routes
 past it (consulting the subcommand's flag arity) and the subcommand accepts or rejects it — so
-`tool --format json list` works while `tool --format json other` is rejected at `other`. Subcommands
-disagreeing on whether a shared spelling takes a value is a compile error.
+`tool --format json list` works while `tool --format json other` is rejected at `other`. A parent
+that defines its own `run` runs it when no subcommand word is given, including on a bare
+invocation; a parent without one prints its help. Subcommands disagreeing on whether a shared
+spelling takes a value is a compile error.
 
 A subcommand may answer to more than one name with `aliases:` on its `command` macro:
 

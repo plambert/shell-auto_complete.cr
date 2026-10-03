@@ -563,7 +563,8 @@ flag verbose : Bool = false, "--verbose", "Verbose"   # on the parent
 
 A routing command's own flags work on either side of the subcommand word: `tool --verbose build` and
 `tool build --verbose` both parse, and `tool --init` (with subcommands present) runs the parent's
-own `run`. Tokens after `--` never route.
+own `run`. So does a bare `tool` when the parent defines `run`; a parent without one prints its help
+instead. Tokens after `--` never route.
 
 ### Share a flag across some subcommands
 

@@ -147,10 +147,12 @@ describe "flags on routing commands" do
     InheritApp.last_run.should eq("root init=true")
   end
 
-  it "still shows help with empty argv" do
+  it "runs the routing command on empty argv because it defines run" do
+    InheritApp.last_run = ""
     output = IO::Memory.new
     InheritApp.dispatch([] of String, stdout: output, rescue_errors: false)
-    output.to_s.should contain("Usage:")
+    InheritApp.last_run.should eq("root init=false")
+    output.to_s.should eq("")
   end
 
   it "still intercepts --help on the routing command" do

@@ -1627,10 +1627,15 @@ module Shell::AutoComplete
             routing_active = true
           \{% end %}
           if routing_active
-            if argv.empty?
-              stdout.puts help(parent_prefix)
-              return
-            end
+            # A bare invocation prints help only when this command has no
+            # `run` of its own. A command that both routes and runs falls
+            # through, so its `run` sees the empty argv like any other.
+            \{% unless ([@type] + @type.ancestors).any? { |owner_type| owner_type != ::Shell::AutoComplete::Command && owner_type.methods.any? { |m| m.name.stringify == "run" } } %}
+              if argv.empty?
+                stdout.puts help(parent_prefix)
+                return
+              end
+            \{% end %}
             value_flag_tokens = ::Set(::String).new
             switch_flag_tokens = ::Set(::String){"--help", "-h", "--all-help"}
             value_flag_tokens << shell_completion_flag_name

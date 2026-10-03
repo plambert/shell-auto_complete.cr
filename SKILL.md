@@ -231,7 +231,8 @@ command with subcommands prints the whole tree.
 1. Handles a completion request (shell calling back) if present.
 2. Handles `--shell-completion <shell>` install output.
 3. Routes to a matching subcommand.
-4. Prints help for bare routing commands, `--all-help`, or `--help`/`-h`.
+4. Prints help for `--all-help`, `--help`/`-h`, or a bare routing command that has no `run`
+   of its own.
 5. Otherwise parses argv and calls `run`.
 
 With `rescue_errors: true` (default), a `ParseError` is printed as

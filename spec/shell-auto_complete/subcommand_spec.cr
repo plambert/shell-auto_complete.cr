@@ -80,11 +80,38 @@ describe "subcommand routing" do
   end
 end
 
+# Parent that routes and also runs on its own
+Shell::AutoComplete.command SubRunningParent, name: "running", description: "runs by itself" do
+  subcommand SubChild
+
+  class_property ran : Bool = false
+
+  def run
+    self.class.ran = true
+  end
+end
+
 describe "empty argv on subcommand parent" do
   it "prints help on empty argv when subcommands exist" do
     io = IO::Memory.new
     SubParent.dispatch([] of String, stdout: io)
     io.to_s.should contain("Usage: parent")
+  end
+
+  it "calls the parent's own run on empty argv when it defines one" do
+    SubRunningParent.ran = false
+    io = IO::Memory.new
+    SubRunningParent.dispatch([] of String, stdout: io)
+    SubRunningParent.ran.should be_true
+    io.to_s.should eq("")
+  end
+
+  it "still routes to a subcommand when the parent defines run" do
+    SubRunningParent.ran = false
+    result = SubRunningParent.dispatch(["child", "--value", "x"])
+    result.should be_a(SubChild)
+    result.as(SubChild).ran_child.should be_true
+    SubRunningParent.ran.should be_false
   end
 end
 
