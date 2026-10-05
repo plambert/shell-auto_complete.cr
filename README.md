@@ -234,7 +234,8 @@ the process is replaced (`exec`) with it, passing every argument after the word.
 subcommands always win; a word containing a path separator is never looked up; and when nothing is
 found the usual `unknown subcommand` error is raised. It works with declared subcommands or on its
 own (a pure PATH-dispatch tool), and discovered external subcommands are offered in completion
-alongside declared ones. Declaring it on a `parent:`-derived command is a compile error.
+alongside declared ones. Declaring it on a `parent:`-derived command is a compile error. It is POSIX
+only: Windows has no `exec`, so enabling it there is a compile error too.
 
 `search_path:` restricts the lookup to a fixed, colon-separated directory list instead of `PATH`. A
 relative entry resolves against the directory holding the running binary, so

@@ -18,26 +18,25 @@ private def run_rescue_example(argv : Array(String)) : NamedTuple(stdout: String
     RescueExample.dispatch(ARGV)
     CR
   src_file = File.tempfile("sac-rescue-src", ".cr", dir: spec_tmp_dir)
-  bin_file = File.tempfile("sac-rescue-bin", dir: spec_tmp_dir)
-  # Close the binary's fd before `crystal build` writes it: on Linux, exec'ing a
-  # path that still has an open writable fd raises ETXTBSY (macOS is lenient).
-  bin_file.close
+  # A name with nothing open on it: on Linux, exec'ing a path that still has
+  # an open writable fd raises ETXTBSY (macOS is lenient).
+  bin_path = spec_binary("sac-rescue-bin")
   begin
     File.write(src_file.path, src)
     build = Process.run(
       "crystal",
-      ["build", src_file.path, "--no-debug", "-o", bin_file.path],
+      ["build", src_file.path, "--no-debug", "-o", bin_path],
       output: Process::Redirect::Close,
       error: Process::Redirect::Close,
     )
     raise "compile failed" unless build.success?
     out_io = IO::Memory.new
     err_io = IO::Memory.new
-    status = Process.run(bin_file.path, argv, output: out_io, error: err_io)
+    status = Process.run(bin_path, argv, output: out_io, error: err_io)
     {stdout: out_io.to_s, stderr: err_io.to_s, status: status}
   ensure
     src_file.delete
-    File.delete(bin_file.path) if File.exists?(bin_file.path)
+    File.delete?(bin_path)
   end
 end
 
@@ -82,27 +81,25 @@ describe "dispatch rescue prints full path for nested commands" do
       NestedParent.dispatch(ARGV)
       CR
     src_file = File.tempfile("sac-nested-err-src", ".cr", dir: spec_tmp_dir)
-    bin_file = File.tempfile("sac-nested-err-bin", dir: spec_tmp_dir)
-    # See note above: close the fd so Linux can exec the compiled binary.
-    bin_file.close
+    bin_path = spec_binary("sac-nested-err-bin")
     begin
       File.write(src_file.path, src)
       build = Process.run(
         "crystal",
-        ["build", src_file.path, "--no-debug", "-o", bin_file.path],
+        ["build", src_file.path, "--no-debug", "-o", bin_path],
         output: Process::Redirect::Close,
         error: Process::Redirect::Close,
       )
       raise "compile failed" unless build.success?
       out_io = IO::Memory.new
       err_io = IO::Memory.new
-      status = Process.run(bin_file.path, ["child", "--bogus"], output: out_io, error: err_io)
+      status = Process.run(bin_path, ["child", "--bogus"], output: out_io, error: err_io)
       status.success?.should be_false
       err_io.to_s.should contain("parent child:")
       err_io.to_s.should contain("unknown flag")
     ensure
       src_file.delete
-      File.delete(bin_file.path) if File.exists?(bin_file.path)
+      File.delete?(bin_path)
     end
   end
 end

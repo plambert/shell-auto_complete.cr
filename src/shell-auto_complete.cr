@@ -1,6 +1,18 @@
 module Shell::AutoComplete
   {% begin %}
-    VERSION = {{ `shards version #{__DIR__}/..`.stringify.chomp }}
+    # Windows runs a macro's command with no shell, and its command line
+    # quotes only with double quotes. A Windows path cannot hold a double
+    # quote, so none needs escaping there; elsewhere the path is single quoted
+    # with any embedded single quote closed and reopened.
+    {% if flag?(:win32) %}
+      {% command = "shards version \"" + __DIR__ + "\"" %}
+      {% fallback = "cmd /c \"shards version 2>NUL || echo unknown\"" %}
+    {% else %}
+      {% command = "shards version '" + __DIR__.gsub(%r{'}, "'\\''") + "'" %}
+      {% fallback = "shards version 2>/dev/null || echo unknown" %}
+    {% end %}
+
+    VERSION = {{ `#{command.id}`.stringify.chomp }}
 
     # The version of the project being compiled — not this shard's own, which
     # is `VERSION` above. It is the last-resort fallback for `--version` when a
@@ -12,7 +24,11 @@ module Shell::AutoComplete
     # between — which is exactly what happens while cutting a release. Every
     # consumer, `Command.version_string` and the specs alike, reads this
     # constant so the value cannot differ within a build.
-    SHARDS_PROJECT_VERSION = {{ `shards version 2>/dev/null || echo unknown`.strip.stringify }}
+    #
+    # Only the last line is kept. `shards version` reports a missing
+    # `shard.yml` on standard output, not standard error, so a failed run
+    # leaves its complaint above the fallback's "unknown".
+    SHARDS_PROJECT_VERSION = {{ `#{fallback.id}`.strip.lines.last }}
   {% end %}
 end
 

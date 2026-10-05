@@ -14,3 +14,11 @@ def spec_tmp_dir : String
   Dir.mkdir_p(SPEC_TMP_DIR)
   SPEC_TMP_DIR
 end
+
+# Where a spec's compiled binary goes: a fresh name in the scratch
+# directory, with nothing written there yet. On Windows it ends in `.exe`,
+# because the compiler adds the extension to a name without one and the
+# spec would run whatever was left at the bare name instead.
+def spec_binary(prefix : String) : String
+  File.tempname(prefix, {{ flag?(:win32) ? ".exe" : nil }}, dir: spec_tmp_dir)
+end
