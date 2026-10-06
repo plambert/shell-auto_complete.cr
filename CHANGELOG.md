@@ -4,6 +4,8 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+## [2.6.3] - 2026-10-05
+
 ### Changed
 
 - `external_subcommands` is POSIX only. Windows has no `exec` to hand the process to another program with, so enabling it in a Windows build is a compile error that says so. A tool that builds on both can wrap the declaration in `{% unless flag?(:win32) %}`.
