@@ -20,7 +20,7 @@ describe "complete_with:" do
   end
 
   it "filters by prefix (the shell does this; we just emit all candidates)" do
-    # The Crystal side emits all; bash does compgen filtering.
+    # The Crystal side emits all; the shell filters.
     output = IO::Memory.new
     CompleteWithCli.dispatch(["__complete", "2", "cwcli", "--branch", "feat"], stdout: output)
     lines = output.to_s.lines.map(&.chomp)
