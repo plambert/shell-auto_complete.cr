@@ -4,6 +4,8 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+## [2.6.4] - 2026-10-28
+
 ### Fixed
 
 - The bash completion script now escapes each candidate before readline inserts it. A value with a space, an apostrophe, a `$` or a backslash used to land on the command line bare, so `--album Lac<Tab>` produced `--album Lac d'Annecy` and the shell split it. A candidate is now escaped with `printf %q`, or for the quote style the user opened the word with, since readline keeps that quote and closes it. The function also strips the opening quote and backslash escapes from the partial word before the binary and the prefix filter see it, and it filters with a plain `case` instead of `compgen -W`, which expanded the candidate list. zsh and fish already quoted correctly.
